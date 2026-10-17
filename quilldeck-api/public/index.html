@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Quilldeck · launch toolkit for indie authors</title>
+<title>Quilldeck · launch toolkit for independent authors</title>
 <meta name="description" content="Write KDP-ready blurbs and a full book-launch plan in minutes. Powered by NVIDIA Nemotron on Nebius Token Factory.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -312,9 +312,20 @@ footer.site p { margin: 0 0 6px; }
 
   // ---- Prompts (identical to the Android app's) ----
   function afroPrimer(african, european) {
-    const a = african.trim() || 'a specific African tradition (e.g. Yoruba, Akan, Igbo — never generic "African magic")';
-    const e = european.trim() || 'a specific European tradition (e.g. Norse, Celtic, Anglo-Saxon — never generic "European magic")';
+    // When the author leaves a tradition blank, the model must not invent one:
+    // a confident wrong guess (e.g. Akan for a Yoruba-rooted book) is worse than none.
+    const unnamed = (side) => `the specific ${side} tradition(s) named or clearly implied in the synopsis (if the synopsis names none, do NOT invent or guess a specific people, deity or tradition; describe the ${side} element only in the terms the synopsis itself uses)`;
+    const a = african.trim() || unnamed('African');
+    const e = european.trim() || unnamed('European');
     return `This is an Afroeurofantasy: ${a} and ${e} mythic-cultural systems must be co-constitutive of this world's reality, not decoration layered on top of each other. Ground the magic, cosmology, and stakes in these traditions specifically. Neither tradition should function as mere setting or aesthetic backdrop for the other; both must meaningfully shape the story's world and stakes. Do not imply that mixed heritage alone grants magical or narrative significance — any significance must come from the specific story, not from ancestry itself. The encounter between these two traditions should read as consequential, reshaping what's at stake, not just combining two aesthetics.\n\n`;
+  }
+
+  // "2027-04-17" -> "17 April 2027", so the model doesn't fall back to US date order.
+  function formatDate(v) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return '';
+    const [y, m, d] = v.split('-').map(Number);
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return `${d} ${months[m - 1]} ${y}`;
   }
 
   function readBook() {
@@ -323,7 +334,7 @@ footer.site p { margin: 0 0 6px; }
       title: $('title').value.trim(),
       genre: genre === OTHER ? $('customGenre').value.trim() : genre,
       synopsis: $('synopsis').value.trim(),
-      launch: $('launch').value,
+      launch: formatDate($('launch').value),
       primer: genre === AFRO ? afroPrimer($('african').value, $('european').value) : '',
     };
     if (!book.title) return { problem: 'Add your book\'s title.', focus: 'title' };
@@ -362,7 +373,7 @@ Book details:
 - Title: "${b.title}"
 - Genre: ${b.genre}
 - Blurb: ${blurb}
-- Launch date: ${b.launch || 'Coming soon'}
+- Launch date: ${b.launch ? `${b.launch} (write dates in the form "17 April 2027")` : 'Coming soon'}
 
 Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic.
 
@@ -530,7 +541,7 @@ Respond in valid JSON only (no markdown):
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
     setBusy(true);
-    showWorking('building your launch plan', 'This is a big job: posts, emails, ads, a 14-day calendar and promo sites. It usually takes one to two minutes.');
+    showWorking('building your launch plan', 'This is a big job: posts, emails, ads, a 14-day calendar and promo sites. It usually takes about 30 seconds.');
     try {
       const data = await call('/api/generate-marketing', planPrompt(book, chosenBlurb || book.synopsis));
       if (!data || !Array.isArray(data.socialPosts) || !data.socialPosts.length) throw { message: 'The response came back without a launch plan. Try again.' };
@@ -545,8 +556,9 @@ Respond in valid JSON only (no markdown):
   });
 
   const arr = (v) => (Array.isArray(v) ? v : []);
-  const PLATFORM_NAMES = { booktok: 'BookTok', bookstagram: 'Bookstagram', twitter: 'X', x: 'X', 'x/twitter': 'X', facebook: 'Facebook', general: 'Any platform' };
-  const platformName = (p) => PLATFORM_NAMES[String(p || '').toLowerCase()] || String(p || 'Post');
+  const PLATFORM_NAMES = { booktok: 'BookTok', bookstagram: 'Bookstagram', tiktok: 'TikTok', instagram: 'Instagram', linkedin: 'LinkedIn', youtube: 'YouTube', twitter: 'X', x: 'X', 'x/twitter': 'X', 'twitter/x': 'X', facebook: 'Facebook', threads: 'Threads', pinterest: 'Pinterest', goodreads: 'Goodreads', email: 'Email', newsletter: 'Newsletter', general: 'Any platform' };
+  const sentence = (t) => { const s = String(t || '').trim(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
+  const platformName = (p) => PLATFORM_NAMES[String(p || '').trim().toLowerCase()] || sentence(p) || 'Post';
 
   function item(title, meta, body, extra, copyable) {
     const n = el('div', 'item');
@@ -568,7 +580,7 @@ Respond in valid JSON only (no markdown):
       const tags = arr(p.hashtags).map((t) => (String(t).startsWith('#') ? t : `#${t}`)).join(' ');
       return item(platformName(p.platform), null, p.content, tags ? el('p', 'tags', tags) : null, [p.content, tags].filter(Boolean).join('\n\n'));
     })],
-    ['Emails', (d) => arr(d.emails).map((m) => item(m.subjectLine, `${m.type || 'Email'}${m.subjectLineAlt ? ` · or try: ${m.subjectLineAlt}` : ''}`, m.body, null, `Subject: ${m.subjectLine}\n\n${m.body}`))],
+    ['Emails', (d) => arr(d.emails).map((m) => item(m.subjectLine, `${sentence(m.type) || 'Email'}${m.subjectLineAlt ? ` · or try: ${m.subjectLineAlt}` : ''}`, m.body, null, `Subject: ${m.subjectLine}\n\n${m.body}`))],
     ['Amazon ads', (d) => arr(d.adCopy).map((a) => {
       const kw = arr(a.keywords).join(', ');
       return item(a.headline, null, a.body, kw ? el('p', 'tags', `Keywords: ${kw}`) : null, `${a.headline}\n\n${a.body}`);
@@ -580,7 +592,7 @@ Respond in valid JSON only (no markdown):
         const tr = el('tr');
         tr.append(el('td', null, c.day));
         const td = el('td');
-        td.append(el('span', 'meta', `${platformName(c.platform)} · ${c.postType || ''}`), document.createTextNode(c.content || ''));
+        td.append(el('span', 'meta', [platformName(c.platform), sentence(c.postType)].filter(Boolean).join(' · ')), document.createTextNode(c.content || ''));
         tr.append(td);
         tb.append(tr);
       }
