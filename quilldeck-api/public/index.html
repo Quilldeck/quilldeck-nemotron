@@ -200,13 +200,18 @@ footer.site p { margin: 0 0 6px; }
 
     <div class="row">
       <div class="field">
-        <label for="genre">Genre</label>
-        <select id="genre" name="genre" required></select>
+        <label for="author">Author name <span class="hint">(optional)</span></label>
+        <input id="author" name="author" autocomplete="off" maxlength="80" placeholder="As it appears on the cover">
       </div>
       <div class="field">
         <label for="launch">Launch date <span class="hint">(optional)</span></label>
         <input id="launch" name="launch" type="date">
       </div>
+    </div>
+
+    <div class="field">
+      <label for="genre">Genre</label>
+      <select id="genre" name="genre" required></select>
     </div>
 
     <div class="field hidden" id="customWrap">
@@ -271,10 +276,13 @@ footer.site p { margin: 0 0 6px; }
   };
 
   const $ = (id) => document.getElementById(id);
+  // The model sometimes wraps titles in markdown (*The Silent One*). Strip it
+  // so what's shown, and what's copied into KDP or an email, is clean text.
+  const clean = (t) => String(t).replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2');
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
-    if (text != null) n.textContent = String(text);
+    if (text != null) n.textContent = clean(text);
     return n;
   };
 
@@ -296,7 +304,7 @@ footer.site p { margin: 0 0 6px; }
 
   // ---- Remember the draft in this browser only (a convenience, never required) ----
   const DRAFT_KEY = 'quilldeck-draft-v1';
-  const fields = ['title','genre','launch','customGenre','african','european','synopsis'];
+  const fields = ['title','author','genre','launch','customGenre','african','european','synopsis'];
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
     if (saved) for (const f of fields) if (saved[f]) $(f).value = saved[f];
@@ -335,6 +343,7 @@ footer.site p { margin: 0 0 6px; }
       genre: genre === OTHER ? $('customGenre').value.trim() : genre,
       synopsis: $('synopsis').value.trim(),
       launch: formatDate($('launch').value),
+      author: $('author').value.trim(),
       primer: genre === AFRO ? afroPrimer($('african').value, $('european').value) : '',
     };
     if (!book.title) return { problem: 'Add your book\'s title.', focus: 'title' };
@@ -367,17 +376,22 @@ Requirements for EACH blurb:
 Respond in this exact JSON format (no markdown, no backticks):
 {"blurbs":[{"variant":1,"hook":"emotional","text":"Full blurb text here..."},{"variant":2,"hook":"action","text":"Full blurb text here..."},{"variant":3,"hook":"mystery","text":"Full blurb text here..."}]}`;
 
-  const planPrompt = (b, blurb) => `${b.primer}You are an expert indie book marketing strategist. Generate a complete marketing package for a book launch.
+  // The launch plan is requested as two halves in parallel: each is shorter, so
+  // it finishes sooner and Nemotron is far less likely to drop a section.
+  const planHeader = (b, blurb) => `${b.primer}You are an expert book marketing strategist for independent authors. You are writing part of a launch package for this book.
 
 Book details:
 - Title: "${b.title}"
+- Author: ${b.author || 'not given (where a sign-off or author name is needed, write [Author name])'}
 - Genre: ${b.genre}
 - Blurb: ${blurb}
 - Launch date: ${b.launch ? `${b.launch} (write dates in the form "17 April 2027")` : 'Coming soon'}
 
-Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic.
+Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.`;
 
-Generate ALL of the following:
+  const planPromptA = (b, blurb) => `${planHeader(b, blurb)}
+
+Generate BOTH of the following:
 
 1. SOCIAL MEDIA POSTS (5 posts) — platform-specific, each referencing the actual book:
    - BookTok script (60-second hook) — describe the video content in plain sentences (what to show, what to say); do NOT use square brackets or stage-direction notation like "[Camera on...]"
@@ -386,24 +400,32 @@ Generate ALL of the following:
    - Facebook post
    - General post
 
-2. EMAIL NEWSLETTERS (3 emails) with subject lines:
+2. EMAIL NEWSLETTERS (3 emails) with subject lines, each signed by the author:
    - Pre-launch tease
    - Launch day announcement
    - Post-launch follow-up
 
-3. AMAZON AD COPY (3 variants):
-   Each with headline, body copy, and 5 keywords
-
-4. POSTING CALENDAR (14 days):
-   Day-by-day with platform, post type, and content snippet
-
-5. PROMO SITES (5 recommendations):
-   Name, URL, cost, genre fit, submission notes
-
-Respond in valid JSON only (no markdown):
+Respond in valid JSON only, with both arrays filled:
 {
   "socialPosts": [{"platform":"booktok","content":"...","hashtags":["..."]}],
-  "emails": [{"type":"pre-launch","subjectLine":"...","subjectLineAlt":"...","body":"..."}],
+  "emails": [{"type":"pre-launch","subjectLine":"...","subjectLineAlt":"...","body":"..."}]
+}`;
+
+  const planPromptB = (b, blurb) => `${planHeader(b, blurb)}
+
+Generate ALL THREE of the following:
+
+1. AMAZON AD COPY (3 variants):
+   Each with headline, body copy, and 5 keywords
+
+2. POSTING CALENDAR (14 days):
+   Day-by-day with platform, post type, and content snippet
+
+3. PROMO SITES (5 recommendations):
+   Name, URL, cost, genre fit, submission notes
+
+Respond in valid JSON only, with all three arrays filled:
+{
   "adCopy": [{"headline":"...","body":"...","keywords":["..."]}],
   "calendar": [{"day":1,"platform":"...","postType":"...","content":"..."}],
   "promoSites": [{"name":"...","url":"...","cost":"...","genre":"...","notes":"..."}]
@@ -442,13 +464,13 @@ Respond in valid JSON only (no markdown):
     statusBox.replaceChildren();
   }
 
-  async function call(path, prompt) {
+  async function call(path, prompt, expect) {
     let res;
     try {
       res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(expect ? { prompt, expect } : { prompt }),
       });
     } catch (err) {
       throw { message: 'Could not reach the server. Check your connection and try again.', detail: err && err.message };
@@ -526,7 +548,7 @@ Respond in valid JSON only (no markdown):
 
   async function copyText(text, btn) {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(clean(text));
       const was = btn.textContent;
       btn.textContent = 'Copied';
       setTimeout(() => { btn.textContent = was; }, 1600);
@@ -541,18 +563,30 @@ Respond in valid JSON only (no markdown):
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
     setBusy(true);
-    showWorking('building your launch plan', 'This is a big job: posts, emails, ads, a 14-day calendar and promo sites. It usually takes about 30 seconds.');
-    try {
-      const data = await call('/api/generate-marketing', planPrompt(book, chosenBlurb || book.synopsis));
-      if (!data || !Array.isArray(data.socialPosts) || !data.socialPosts.length) throw { message: 'The response came back without a launch plan. Try again.' };
-      clearStatus();
+    showWorking('building your launch plan', 'Posts, emails, ads, a 14-day calendar and promo sites, written in two parts at once. It usually takes 30 to 60 seconds.');
+    const blurb = chosenBlurb || book.synopsis;
+    const halves = await Promise.allSettled([
+      call('/api/generate-marketing', planPromptA(book, blurb), ['socialPosts', 'emails']),
+      call('/api/generate-marketing', planPromptB(book, blurb), ['adCopy', 'calendar', 'promoSites']),
+    ]);
+    const data = {};
+    const failures = [];
+    halves.forEach((h, i) => {
+      if (h.status === 'fulfilled' && h.value) Object.assign(data, h.value);
+      else failures.push({ part: i === 0 ? 'social posts and emails' : 'ads, calendar and promo sites', err: h.reason || {} });
+    });
+    if (failures.length === 2) {
+      showError(failures[0].err.message || 'Something went wrong. Try again.', failures[0].err.detail);
+    } else {
+      if (failures.length === 1) {
+        showError(`Your ${failures[0].part} didn't come back. Tap "Build the launch plan" to try again.`, failures[0].err.message);
+      } else {
+        clearStatus();
+      }
       $('planSub').textContent = chosenBlurb ? `Built from your chosen blurb for "${book.title}".` : `Built from your synopsis for "${book.title}". Write blurbs first and pick one to sharpen it.`;
       renderPlan(data);
-    } catch (e) {
-      showError(e.message || 'Something went wrong. Try again.', e.detail);
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   });
 
   const arr = (v) => (Array.isArray(v) ? v : []);
@@ -637,7 +671,10 @@ Respond in valid JSON only (no markdown):
     function select(i) {
       buttons.forEach((b, j) => { b.setAttribute('aria-selected', String(i === j)); b.tabIndex = i === j ? 0 : -1; });
       panel.setAttribute('aria-labelledby', `tab-${i}`);
-      panel.replaceChildren(...SECTIONS[i][1](data));
+      const key = ['socialPosts', 'emails', 'adCopy', 'calendar', 'promoSites'][i];
+      panel.replaceChildren(...(arr(data[key]).length
+        ? SECTIONS[i][1](data)
+        : [el('p', 'caveat', 'This section did not come back. Tap "Build the launch plan" to try again.')]));
     }
     select(0);
     $('planResults').classList.remove('hidden');
