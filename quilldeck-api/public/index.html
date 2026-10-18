@@ -387,7 +387,9 @@ Book details:
 - Blurb: ${blurb}
 - Launch date: ${b.launch ? `${b.launch} (write dates in the form "17 April 2027")` : 'Coming soon'}
 
-Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.`;
+Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.
+
+Do NOT invent facts the author has not given you: no made-up events or dates (other than the launch date), giveaways, freebies, prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].`;
 
   const planPromptA = (b, blurb) => `${planHeader(b, blurb)}
 
@@ -503,7 +505,8 @@ Respond in valid JSON only, with all three arrays filled:
     showWorking('writing your blurbs', 'This usually takes 10 to 30 seconds.');
     try {
       const data = await call('/api/generate-blurb', blurbPrompt(book));
-      if (!data || !Array.isArray(data.blurbs) || !data.blurbs.length) throw { message: 'The response came back without any blurbs. Try again.' };
+      const usable = data && Array.isArray(data.blurbs) && data.blurbs.length > 0 && data.blurbs.every((x) => String((x && x.text) || '').split(/\s+/).filter(Boolean).length >= 40);
+      if (!usable) throw { message: 'The blurbs came back unusable. Try again.' };
       clearStatus();
       renderBlurbs(data.blurbs);
     } catch (e) {
