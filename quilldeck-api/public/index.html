@@ -235,6 +235,11 @@ footer.site p { margin: 0 0 6px; }
       <textarea id="synopsis" name="synopsis" required maxlength="4000" placeholder="A disgraced lamplighter discovers the city's eternal flame is a prison, and the thing inside it knows her name."></textarea>
     </div>
 
+    <div class="field">
+      <label for="facts">Facts the copy must get right <span class="hint">(optional: who is who, heritage, what does not happen)</span></label>
+      <textarea id="facts" name="facts" maxlength="1500" style="min-height:90px" placeholder="e.g. Deminius's father is Yoruba and his mother is Anglo-Saxon. Klan is not Yoruba. Deminius is never captured."></textarea>
+    </div>
+
     <div class="actions">
       <button type="button" class="primary" id="goBlurbs">Write 3 blurbs</button>
       <button type="button" class="secondary" id="goPlan">Build the launch plan</button>
@@ -304,7 +309,7 @@ footer.site p { margin: 0 0 6px; }
 
   // ---- Remember the draft in this browser only (a convenience, never required) ----
   const DRAFT_KEY = 'quilldeck-draft-v1';
-  const fields = ['title','author','genre','launch','customGenre','african','european','synopsis'];
+  const fields = ['title','author','genre','launch','customGenre','african','european','synopsis','facts'];
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
     if (saved) for (const f of fields) if (saved[f]) $(f).value = saved[f];
@@ -325,7 +330,7 @@ footer.site p { margin: 0 0 6px; }
     const unnamed = (side) => `the specific ${side} tradition(s) named or clearly implied in the synopsis (if the synopsis names none, do NOT invent or guess a specific people, deity or tradition; describe the ${side} element only in the terms the synopsis itself uses)`;
     const a = african.trim() || unnamed('African');
     const e = european.trim() || unnamed('European');
-    return `This is an Afroeurofantasy: ${a} and ${e} mythic-cultural systems must be co-constitutive of this world's reality, not decoration layered on top of each other. Ground the magic, cosmology, and stakes in these traditions specifically. Neither tradition should function as mere setting or aesthetic backdrop for the other; both must meaningfully shape the story's world and stakes. Do not imply that mixed heritage alone grants magical or narrative significance — any significance must come from the specific story, not from ancestry itself. The encounter between these two traditions should read as consequential, reshaping what's at stake, not just combining two aesthetics.\n\n`;
+    return `This is an Afroeurofantasy: ${a} and ${e} mythic-cultural systems must be co-constitutive of this world's reality, not decoration layered on top of each other. Ground the magic, cosmology, and stakes in these traditions specifically, but tie a tradition to a particular character, family member, place or event ONLY where the synopsis or the author's facts do so; never guess who carries which heritage. Neither tradition should function as mere setting or aesthetic backdrop for the other; both must meaningfully shape the story's world and stakes. Do not imply that mixed heritage alone grants magical or narrative significance — any significance must come from the specific story, not from ancestry itself. The encounter between these two traditions should read as consequential, reshaping what's at stake, not just combining two aesthetics.\n\n`;
   }
 
   // "2027-04-17" -> "17 April 2027", so the model doesn't fall back to US date order.
@@ -342,6 +347,7 @@ footer.site p { margin: 0 0 6px; }
       title: $('title').value.trim(),
       genre: genre === OTHER ? $('customGenre').value.trim() : genre,
       synopsis: $('synopsis').value.trim(),
+      facts: $('facts').value.trim(),
       launch: formatDate($('launch').value),
       author: $('author').value.trim(),
       primer: genre === AFRO ? afroPrimer($('african').value, $('european').value) : '',
@@ -352,6 +358,28 @@ footer.site p { margin: 0 0 6px; }
     if (book.synopsis.length < 40) return { problem: 'Add a synopsis of at least a couple of sentences, with your characters\' names and the central conflict.', focus: 'synopsis' };
     return { book };
   }
+
+  // Capitalised words from the author's own text, so the model is told to
+  // spell invented names exactly (it drifted Gardenia -> Gardena / Gardinia).
+  const STOP = new Set('The A An And But Or If When While As At In On Of To For From With By He She They It His Her Their Its This That These Those Who What Why How Where After Before Then There Here One Two Book Title Genre Synopsis I We You Our Your Is Are Was Were Be Not No Yes Afroeurofantasy'.split(' '));
+  function properNames(text) {
+    const seen = new Set();
+    for (const m of text.matchAll(/\b[A-Z][\p{L}'’-]{2,}/gu)) {
+      const w = m[0].replace(/['’]s$/, '');
+      if (!STOP.has(w)) seen.add(w);
+    }
+    return [...seen].slice(0, 40);
+  }
+
+  // The author's synopsis and facts are the only source of story truth.
+  const fidelity = (b) => {
+    const names = properNames(`${b.title} ${b.synopsis} ${b.facts}`);
+    return `STORY ACCURACY (most important):
+- The synopsis${b.facts ? ' and the author\'s facts below are' : ' is'} the ONLY source of truth about the story. Every character, relationship, heritage, place and event you mention must be stated there.
+- Do not invent plot events, captures, betrayals, prophecies, names, titles, creatures or backstory that are not stated.
+- Do not assign a heritage, culture, religion or tradition to any character unless the text explicitly does. If it is unclear which parent or character carries which heritage, do not say.
+- Where the story is vague, write around the gap with atmosphere and stakes rather than filling it with specifics.${names.length ? `\n- Spell these names exactly as written: ${names.join(', ')}.` : ''}${b.facts ? `\n\nAuthor's facts (must be respected exactly):\n${b.facts}` : ''}`;
+  };
 
   const blurbPrompt = (b) => `${b.primer}You are a professional book marketing copywriter specialising in ${b.genre} fiction.
 
@@ -365,13 +393,15 @@ Book details:
 - Genre: ${b.genre}
 - Synopsis: ${b.synopsis}
 
+${fidelity(b)}
+
 Requirements for EACH blurb:
 - 150-200 words (Amazon optimal length)
 - End with a compelling call-to-action line
 - Include genre-appropriate tone and language
 - Be ready to paste directly into KDP
 - No spoilers beyond Act 1
-- Use the actual character names and world details from the synopsis
+- Use the actual character names and world details from the synopsis, and nothing the synopsis does not say
 
 Respond in this exact JSON format (no markdown, no backticks):
 {"blurbs":[{"variant":1,"hook":"emotional","text":"Full blurb text here..."},{"variant":2,"hook":"action","text":"Full blurb text here..."},{"variant":3,"hook":"mystery","text":"Full blurb text here..."}]}`;
@@ -384,10 +414,13 @@ Book details:
 - Title: "${b.title}"
 - Author: ${b.author || 'not given (where a sign-off or author name is needed, write [Author name])'}
 - Genre: ${b.genre}
-- Blurb: ${blurb}
+- Synopsis: ${b.synopsis}
+- Chosen blurb (use for tone and hook only; where it adds details not in the synopsis, ignore them): ${blurb}
 - Launch date: ${b.launch ? `${b.launch} (write dates in the form "17 April 2027")` : 'Coming soon'}
 
-Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.
+${fidelity(b)}
+
+Use the ACTUAL book title, genre, and character/world details from the synopsis throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.
 
 Do NOT invent facts the author has not given you: no made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].`;
 
@@ -415,22 +448,27 @@ Respond in valid JSON only, with both arrays filled:
 
   const planPromptB = (b, blurb) => `${planHeader(b, blurb)}
 
-Generate ALL THREE of the following:
+Generate BOTH of the following:
 
 1. AMAZON AD COPY (3 variants):
    Each with headline, body copy, and 5 keywords
 
-2. POSTING CALENDAR (14 days):
-   Day-by-day with platform, post type, and content snippet
-
-3. PROMO SITES (5 recommendations):
+2. PROMO SITES (5 recommendations):
    Name, URL, cost, genre fit, submission notes
 
-Respond in valid JSON only, with all three arrays filled:
+Respond in valid JSON only, with both arrays filled:
 {
   "adCopy": [{"headline":"...","body":"...","keywords":["..."]}],
-  "calendar": [{"day":1,"platform":"...","postType":"...","content":"..."}],
   "promoSites": [{"name":"...","url":"...","cost":"...","genre":"...","notes":"..."}]
+}`;
+
+  const planPromptC = (b, blurb) => `${planHeader(b, blurb)}
+
+Generate a POSTING CALENDAR of exactly 14 days, one entry per day, day 1 to day 14, each with platform, post type, and content snippet.
+
+Respond in valid JSON only:
+{
+  "calendar": [{"day":1,"platform":"...","postType":"...","content":"..."}]
 }`;
 
   // ---- Calling the backend ----
@@ -570,19 +608,20 @@ Respond in valid JSON only, with all three arrays filled:
     const blurb = chosenBlurb || book.synopsis;
     const halves = await Promise.allSettled([
       call('/api/generate-marketing', planPromptA(book, blurb), ['socialPosts', 'emails']),
-      call('/api/generate-marketing', planPromptB(book, blurb), ['adCopy', 'calendar', 'promoSites']),
+      call('/api/generate-marketing', planPromptB(book, blurb), ['adCopy', 'promoSites']),
+      call('/api/generate-marketing', planPromptC(book, blurb), ['calendar']),
     ]);
     const data = {};
     const failures = [];
     halves.forEach((h, i) => {
       if (h.status === 'fulfilled' && h.value) Object.assign(data, h.value);
-      else failures.push({ part: i === 0 ? 'social posts and emails' : 'ads, calendar and promo sites', err: h.reason || {} });
+      else failures.push({ part: ['social posts and emails', 'Amazon ads and promo sites', '14-day calendar'][i], err: h.reason || {} });
     });
-    if (failures.length === 2) {
+    if (failures.length === halves.length) {
       showError(failures[0].err.message || 'Something went wrong. Try again.', failures[0].err.detail);
     } else {
-      if (failures.length === 1) {
-        showError(`Your ${failures[0].part} didn't come back. Tap "Build the launch plan" to try again.`, failures[0].err.message);
+      if (failures.length > 0) {
+        showError(`Your ${failures.map((f) => f.part).join(' and ')} didn't come back. Tap "Build the launch plan" to try again.`, failures[0].err.message);
       } else {
         clearStatus();
       }
