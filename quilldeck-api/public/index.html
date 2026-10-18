@@ -389,7 +389,7 @@ Book details:
 
 Use the ACTUAL book title, genre, and any character/world details from the blurb throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.
 
-Do NOT invent facts the author has not given you: no made-up events or dates (other than the launch date), giveaways, freebies, prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].`;
+Do NOT invent facts the author has not given you: no made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].`;
 
   const planPromptA = (b, blurb) => `${planHeader(b, blurb)}
 
@@ -481,7 +481,7 @@ Respond in valid JSON only, with all three arrays filled:
     if (!res.ok) {
       const timedOut = res.status === 504;
       throw {
-        message: timedOut ? 'That took longer than the server allows. Try again; shorter synopses finish faster.' : (data && data.error) || `The server returned an error (${res.status}).`,
+        message: timedOut ? 'The AI service was slow to respond just now. Please try again; it usually works on the next attempt.' : (data && data.error) || `The server returned an error (${res.status}).`,
         detail: data && data.detail,
       };
     }
@@ -502,7 +502,7 @@ Respond in valid JSON only, with all three arrays filled:
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
     setBusy(true);
-    showWorking('writing your blurbs', 'This usually takes 10 to 30 seconds.');
+    showWorking('writing your blurbs', 'This usually takes 15 to 45 seconds.');
     try {
       const data = await call('/api/generate-blurb', blurbPrompt(book));
       const usable = data && Array.isArray(data.blurbs) && data.blurbs.length > 0 && data.blurbs.every((x) => String((x && x.text) || '').split(/\s+/).filter(Boolean).length >= 40);

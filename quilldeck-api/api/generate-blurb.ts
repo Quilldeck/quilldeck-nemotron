@@ -4,9 +4,9 @@ interface BlurbPayload {
   blurbs: { variant: number; hook: string; text: string }[];
 }
 
-// Vercel stops the function at maxDuration (60s in vercel.json). Only start a
+// Vercel stops the function at maxDuration (120s in vercel.json). Only start a
 // retry if there is realistically time for it to finish.
-const RETRY_CUTOFF_MS = 35_000;
+const RETRY_CUTOFF_MS = 60_000;
 const MIN_WORDS = 60;
 
 // Nemotron occasionally echoes the response template instead of writing

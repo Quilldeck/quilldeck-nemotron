@@ -92,18 +92,29 @@ export function extractJsonObject<T>(raw: string, truncated: boolean): LlmResult
 
 type Attempt<T> = { result: LlmResult<T>; busy: boolean };
 
-async function post(model: string, prompt: string, maxTokens: number, jsonMode: boolean) {
+// Nemotron 3 thinks before answering. For marketing copy that step adds most
+// of the latency (30-60s on the shared endpoint) and little quality, so it is
+// switched off by default via the model's chat template. Set NEBIUS_THINKING=on
+// to restore it.
+const THINKING_OFF = (process.env.NEBIUS_THINKING ?? 'off').toLowerCase() !== 'on';
+
+type PostOptions = { jsonMode: boolean; noThinking: boolean };
+
+async function post(model: string, prompt: string, maxTokens: number, opts: PostOptions) {
   const body: Record<string, unknown> = {
     model,
+    // Keep the headroom even with thinking off: if an endpoint ignores the
+    // setting, thinking tokens would otherwise cut the answer short.
     max_tokens: maxTokens + REASONING_HEADROOM,
-    // A little above the default so separate generations for the same book
-    // don't come back near-identical -- the whole pitch is fresh creative copy.
+    // NVIDIA's recommended sampling for Nemotron 3 Super.
     temperature: 1.0,
+    top_p: 0.95,
     messages: [{ role: 'user', content: prompt }],
   };
+  if (opts.noThinking) body.chat_template_kwargs = { enable_thinking: false };
   // Ask the server to constrain output to a JSON object. Every prompt already
   // says "JSON only", so this is a belt-and-braces measure.
-  if (jsonMode) body.response_format = { type: 'json_object' };
+  if (opts.jsonMode) body.response_format = { type: 'json_object' };
 
   const response = await fetch(NEBIUS_URL, {
     method: 'POST',
@@ -122,14 +133,23 @@ async function post(model: string, prompt: string, maxTokens: number, jsonMode: 
 /** One call to one model. `busy` is true when the model is rate limited or over capacity. */
 async function attemptModel<T>(model: string, prompt: string, maxTokens: number): Promise<Attempt<T>> {
   try {
-    let { response, text } = await post(model, prompt, maxTokens, true);
+    const opts: PostOptions = { jsonMode: true, noThinking: THINKING_OFF };
+    let { response, text } = await post(model, prompt, maxTokens, opts);
 
-    // If this model or endpoint doesn't accept response_format, retry once
-    // without it rather than failing: the prompt still demands JSON and the
-    // parse guard still catches anything else.
-    if (response.status === 400 && /response_format|json_object|json mode/i.test(text)) {
-      console.warn(`nebius: ${model} rejected JSON mode, retrying without it`);
-      ({ response, text } = await post(model, prompt, maxTokens, false));
+    // If the endpoint rejects an optional setting, drop it and retry rather
+    // than failing: the prompt still demands JSON and the parse guard still
+    // catches anything else.
+    for (let i = 0; i < 2 && response.status === 400; i++) {
+      if (opts.noThinking && /chat_template_kwargs|enable_thinking/i.test(text)) {
+        console.warn(`nebius: ${model} rejected enable_thinking=false, retrying with thinking on`);
+        opts.noThinking = false;
+      } else if (opts.jsonMode && /response_format|json_object|json mode/i.test(text)) {
+        console.warn(`nebius: ${model} rejected JSON mode, retrying without it`);
+        opts.jsonMode = false;
+      } else {
+        break;
+      }
+      ({ response, text } = await post(model, prompt, maxTokens, opts));
     }
 
     if (!response.ok) {
