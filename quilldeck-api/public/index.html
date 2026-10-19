@@ -242,7 +242,7 @@ footer.site p { margin: 0 0 6px; }
 
     <div class="field">
       <label for="facts">Facts the copy must get right <span class="hint">(optional: who is who, heritage, what does not happen)</span></label>
-      <textarea id="facts" name="facts" maxlength="1500" style="min-height:90px" placeholder="e.g. Deminius's father is Yoruba and his mother is Anglo-Saxon. Klan is not Yoruba. Deminius is never captured."></textarea>
+      <textarea id="facts" name="facts" maxlength="1500" style="min-height:90px" placeholder="e.g. Deminius's father is Yoruba and his mother is Anglo-Saxon. Klan is a man and is not Yoruba. Deminius is never captured."></textarea>
     </div>
 
     <div class="actions">
@@ -288,7 +288,56 @@ footer.site p { margin: 0 0 6px; }
   const $ = (id) => document.getElementById(id);
   // The model sometimes wraps titles in markdown (*The Silent One*). Strip it
   // so what's shown, and what's copied into KDP or an email, is clean text.
-  const clean = (t) => String(t).replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2');
+  // House style, applied to everything shown or copied, so it holds even when
+  // the model ignores the prompt: no markdown emphasis, no em dashes, and
+  // British spelling.
+  const UK_WORDS = {
+    color: 'colour', colors: 'colours', colored: 'coloured', colorful: 'colourful',
+    favor: 'favour', favors: 'favours', favored: 'favoured', favorite: 'favourite', favorites: 'favourites',
+    honor: 'honour', honors: 'honours', honored: 'honoured', honorable: 'honourable',
+    humor: 'humour', labor: 'labour', neighbor: 'neighbour', neighbors: 'neighbours', neighboring: 'neighbouring',
+    savior: 'saviour', saviors: 'saviours', armor: 'armour', armored: 'armoured', rumor: 'rumour', rumors: 'rumours',
+    valor: 'valour', vigor: 'vigour', splendor: 'splendour', clamor: 'clamour', glamor: 'glamour', ardor: 'ardour',
+    behavior: 'behaviour', endeavor: 'endeavour', harbor: 'harbour', odor: 'odour', parlor: 'parlour', rigor: 'rigour',
+    center: 'centre', centers: 'centres', centered: 'centred', theater: 'theatre', fiber: 'fibre', somber: 'sombre',
+    specter: 'spectre', luster: 'lustre', sepulcher: 'sepulchre', saber: 'sabre',
+    gray: 'grey', grays: 'greys', traveled: 'travelled', traveling: 'travelling', traveler: 'traveller', travelers: 'travellers',
+    canceled: 'cancelled', modeled: 'modelled', fueled: 'fuelled', marveled: 'marvelled', unraveled: 'unravelled',
+    jewelry: 'jewellery', defense: 'defence', offense: 'offence', catalog: 'catalogue', dialog: 'dialogue',
+    skeptic: 'sceptic', skeptical: 'sceptical', plow: 'plough', mold: 'mould', molded: 'moulded', smolder: 'smoulder',
+    smoldering: 'smouldering', enroll: 'enrol', fulfill: 'fulfil', install: 'install', aging: 'ageing', judgment: 'judgement',
+  };
+  const IZE_KEEP = new Set(['size', 'sizes', 'sized', 'seize', 'seizes', 'seized', 'seizing', 'prize', 'prizes', 'prized',
+    'capsize', 'capsized', 'baize', 'maize', 'citizen', 'citizens', 'denizen', 'denizens', 'wizened', 'oversize', 'oversized']);
+  const matchCase = (from, to) => (from === from.toUpperCase() && from.length > 1 ? to.toUpperCase()
+    : from[0] === from[0].toUpperCase() ? to[0].toUpperCase() + to.slice(1) : to);
+  function toBritish(text) {
+    return text.replace(/\b[A-Za-z]+\b/g, (w) => {
+      const lower = w.toLowerCase();
+      if (UK_WORDS[lower]) return matchCase(w, UK_WORDS[lower]);
+      if (IZE_KEEP.has(lower)) return w;
+      // realize -> realise, weaponized -> weaponised, organization -> organisation
+      let m = lower.match(/^([a-z]{3,})iz(e|es|ed|er|ers|ing|ation|ations)$/);
+      if (m) return matchCase(w, `${m[1]}is${m[2]}`);
+      // analyze -> analyse, paralyzed -> paralysed
+      m = lower.match(/^([a-z]{2,})yz(e|es|ed|ing)$/);
+      if (m) return matchCase(w, `${m[1]}ys${m[2]}`);
+      return w;
+    });
+  }
+  function noDashes(text) {
+    return text
+      // An em dash, or a spaced en dash used as one, becomes a comma.
+      .replace(/\s*—\s*/g, ', ')
+      .replace(/ – /g, ', ')
+      // Tidy what that can leave behind.
+      .replace(/,\s*([,.!?;:])/g, '$1')
+      .replace(/(^|\n)\s*,\s*/g, '$1')
+      .replace(/,\s*$/gm, '');
+  }
+  const clean = (t) => toBritish(noDashes(String(t)
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2')));
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -384,6 +433,7 @@ footer.site p { margin: 0 0 6px; }
 - The synopsis${b.facts ? ' and the author\'s facts below are' : ' is'} the ONLY source of truth about the story. Every character, relationship, heritage, place and event you mention must be stated there.
 - Do not invent plot events, captures, betrayals, prophecies, names, titles, creatures or backstory that are not stated.
 - Do not assign a heritage, culture, religion or tradition to any character unless the text explicitly does. If it is unclear which parent or character carries which heritage, do not say.
+- Do not assume any character's gender. Use only the pronouns the synopsis or the author's facts use for that character; if none are given, use the character's name instead of a pronoun.
 - Where the story is vague, write around the gap with atmosphere and stakes rather than filling it with specifics.${names.length ? `\n- Spell these names exactly as written: ${names.join(', ')}.` : ''}${b.series ? `\n- Series: ${b.series}. Mention this once, naturally (e.g. "Book One of ..."). Do not invent titles, plots or release dates for other books in the series.` : ''}${b.facts ? `\n\nAuthor's facts (must be respected exactly):\n${b.facts}` : ''}`;
   };
 
@@ -405,6 +455,7 @@ Requirements for EACH blurb:
 - 150-200 words (Amazon optimal length)
 - End with a compelling call-to-action line
 - Include genre-appropriate tone and language
+- Write in British English (colour, favourite, realise, centre, grey). Do not use em dashes or en dashes; use commas, full stops or colons instead.
 - Be ready to paste directly into KDP
 - No spoilers beyond Act 1
 - Use the actual character names and world details from the synopsis, and nothing the synopsis does not say
@@ -426,7 +477,7 @@ Book details:
 
 ${fidelity(b)}
 
-Use the ACTUAL book title, genre, and character/world details from the synopsis throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis.
+Use the ACTUAL book title, genre, and character/world details from the synopsis throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis. Write in British English (colour, favourite, realise, centre, grey). Do not use em dashes or en dashes; use commas, full stops or colons instead.
 
 Do NOT invent facts the author has not given you: no made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].`;
 
