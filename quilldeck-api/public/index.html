@@ -210,6 +210,11 @@ footer.site p { margin: 0 0 6px; }
     </div>
 
     <div class="field">
+      <label for="series">Series <span class="hint">(optional)</span></label>
+      <input id="series" name="series" autocomplete="off" maxlength="120" placeholder="e.g. Book 1 of a trilogy, The Ember Chronicles">
+    </div>
+
+    <div class="field">
       <label for="genre">Genre</label>
       <select id="genre" name="genre" required></select>
     </div>
@@ -309,7 +314,7 @@ footer.site p { margin: 0 0 6px; }
 
   // ---- Remember the draft in this browser only (a convenience, never required) ----
   const DRAFT_KEY = 'quilldeck-draft-v1';
-  const fields = ['title','author','genre','launch','customGenre','african','european','synopsis','facts'];
+  const fields = ['title','author','series','genre','launch','customGenre','african','european','synopsis','facts'];
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
     if (saved) for (const f of fields) if (saved[f]) $(f).value = saved[f];
@@ -350,6 +355,7 @@ footer.site p { margin: 0 0 6px; }
       facts: $('facts').value.trim(),
       launch: formatDate($('launch').value),
       author: $('author').value.trim(),
+      series: $('series').value.trim(),
       primer: genre === AFRO ? afroPrimer($('african').value, $('european').value) : '',
     };
     if (!book.title) return { problem: 'Add your book\'s title.', focus: 'title' };
@@ -373,12 +379,12 @@ footer.site p { margin: 0 0 6px; }
 
   // The author's synopsis and facts are the only source of story truth.
   const fidelity = (b) => {
-    const names = properNames(`${b.title} ${b.synopsis} ${b.facts}`);
+    const names = properNames(`${b.title} ${b.series} ${b.synopsis} ${b.facts}`);
     return `STORY ACCURACY (most important):
 - The synopsis${b.facts ? ' and the author\'s facts below are' : ' is'} the ONLY source of truth about the story. Every character, relationship, heritage, place and event you mention must be stated there.
 - Do not invent plot events, captures, betrayals, prophecies, names, titles, creatures or backstory that are not stated.
 - Do not assign a heritage, culture, religion or tradition to any character unless the text explicitly does. If it is unclear which parent or character carries which heritage, do not say.
-- Where the story is vague, write around the gap with atmosphere and stakes rather than filling it with specifics.${names.length ? `\n- Spell these names exactly as written: ${names.join(', ')}.` : ''}${b.facts ? `\n\nAuthor's facts (must be respected exactly):\n${b.facts}` : ''}`;
+- Where the story is vague, write around the gap with atmosphere and stakes rather than filling it with specifics.${names.length ? `\n- Spell these names exactly as written: ${names.join(', ')}.` : ''}${b.series ? `\n- Series: ${b.series}. Mention this once, naturally (e.g. "Book One of ..."). Do not invent titles, plots or release dates for other books in the series.` : ''}${b.facts ? `\n\nAuthor's facts (must be respected exactly):\n${b.facts}` : ''}`;
   };
 
   const blurbPrompt = (b) => `${b.primer}You are a professional book marketing copywriter specialising in ${b.genre} fiction.
@@ -389,7 +395,7 @@ Generate exactly 3 different book blurbs for an indie author's novel. Each blurb
 3. MYSTERY HOOK — Lead with an intriguing question or enigma
 
 Book details:
-- Title: "${b.title}"
+- Title: "${b.title}"${b.series ? `\n- Series: ${b.series}` : ''}
 - Genre: ${b.genre}
 - Synopsis: ${b.synopsis}
 
@@ -412,7 +418,7 @@ Respond in this exact JSON format (no markdown, no backticks):
 
 Book details:
 - Title: "${b.title}"
-- Author: ${b.author || 'not given (where a sign-off or author name is needed, write [Author name])'}
+- Author: ${b.author || 'not given (where a sign-off or author name is needed, write [Author name])'}${b.series ? `\n- Series: ${b.series} (pitch this book as the way into the series where it fits, e.g. "start the series", a series hashtag)` : ''}
 - Genre: ${b.genre}
 - Synopsis: ${b.synopsis}
 - Chosen blurb (use for tone and hook only; where it adds details not in the synopsis, ignore them): ${blurb}
