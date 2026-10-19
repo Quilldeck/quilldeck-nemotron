@@ -335,9 +335,37 @@ footer.site p { margin: 0 0 6px; }
       .replace(/(^|\n)\s*,\s*/g, '$1')
       .replace(/,\s*$/gm, '');
   }
-  const clean = (t) => toBritish(noDashes(String(t)
+  // Nemotron drifts on invented names (Gardenia -> Gardena / Gardinia). After
+  // it writes, any capitalised word that is a near-miss of a name from the
+  // author's own text is corrected to the author's spelling.
+  let knownNames = [];
+  function editDistance(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+    }
+    return d[a.length][b.length];
+  }
+  function fixNames(text) {
+    if (!knownNames.length) return text;
+    const exact = new Set(knownNames.map((n) => n.toLowerCase()));
+    return text.replace(/\b[A-Z][\p{L}]{4,}\b/gu, (w) => {
+      const lw = w.toLowerCase();
+      if (exact.has(lw)) return w;
+      for (const name of knownNames) {
+        const ln = name.toLowerCase();
+        if (ln[0] !== lw[0] || ln.length < 5 || Math.abs(ln.length - lw.length) > 1) continue;
+        if (editDistance(lw, ln) <= (ln.length >= 7 ? 2 : 1)) return name;
+      }
+      return w;
+    });
+  }
+  const clean = (t) => fixNames(toBritish(noDashes(String(t)
     .replace(/\*\*([^*\n]+)\*\*/g, '$1')
-    .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2')));
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2'))));
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -596,6 +624,7 @@ Respond in valid JSON only:
     if (busy) return;
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
+    knownNames = properNames(`${book.title} ${book.series} ${book.synopsis} ${book.facts}`);
     setBusy(true);
     showWorking('writing your blurbs', 'This usually takes 15 to 45 seconds.');
     try {
@@ -660,6 +689,7 @@ Respond in valid JSON only:
     if (busy) return;
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
+    knownNames = properNames(`${book.title} ${book.series} ${book.synopsis} ${book.facts}`);
     setBusy(true);
     showWorking('building your launch plan', 'Posts, emails, ads, a 14-day calendar and promo sites, written in two parts at once. It usually takes 30 to 60 seconds.');
     const blurb = chosenBlurb || book.synopsis;
