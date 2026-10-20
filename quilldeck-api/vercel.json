@@ -1,1 +1,1 @@
-{"functions":{"api/generate-marketing.ts":{"maxDuration":120},"api/generate-blurb.ts":{"maxDuration":120},"api/generate-metadata.ts":{"maxDuration":120}}}
+{"functions":{"api/generate-marketing.ts":{"maxDuration":120},"api/generate-blurb.ts":{"maxDuration":120},"api/generate-metadata.ts":{"maxDuration":120},"api/research-promo.ts":{"maxDuration":90}}}

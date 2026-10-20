@@ -20,6 +20,7 @@ Enter your book once: title, author, series, launch date, genre, synopsis, and o
 - **Build the launch plan.** Five platform-specific social posts, three launch emails signed in the author's name, three Amazon ad variants with keywords, a 14-day posting calendar and promo-site suggestions.
 - **Facts the copy must get right.** The author states what must not be changed or invented (for example, "his father is Yoruba and his mother is Anglo-Saxon; Klan is not Yoruba"), and every request is bound by it.
 - **Series aware.** A book that opens a series is pitched as the way in, without inventing titles or plots for later books.
+- **Live promo-site research.** Tavily searches the web for promotion services that suit the book's genre; Nemotron picks the best five using only those pages. Each recommendation shows its current price and rules and links to the page it came from.
 - **Afroeurofantasy support.** For this subgenre, a dedicated primer makes the named African and European traditions shape the world, without guessing which character carries which heritage.
 
 ## How it uses NVIDIA Nemotron and Nebius Token Factory
@@ -36,6 +37,10 @@ What we learned building on it, and how the code responds:
 | Given a vague synopsis, the model invented story facts and drifted on invented names (Gardenia, Gardena, Gardinia). | Every prompt treats the synopsis and the author's facts as the only source of truth, and passes an exact-spelling list of the book's proper nouns. |
 | Without explicit limits, launch copy invented events, giveaways, prices and social handles. | The prompts forbid them and use clear placeholders instead, e.g. `[pre-order link]`. |
 
+### Live research with Tavily
+
+Promo-site suggestions used to come from the model's memory, which meant out-of-date prices and occasionally sites that no longer exist. [`quilldeck-api/api/research-promo.ts`](quilldeck-api/api/research-promo.ts) now runs three Tavily searches in parallel at request time, passes the results to Nemotron with the instruction to use nothing else, and then drops any recommendation that does not cite one of the URLs Tavily returned. The endpoint builds its searches from book fields and never accepts a free-form prompt.
+
 Other details: strict JSON mode with a fallback, `temperature 1.0` and `top_p 0.95` (NVIDIA's recommended sampling), a model fallback list via `NEBIUS_MODELS` for busy periods, and error messages that tell the user what actually went wrong.
 
 ## What changed during the hackathon
@@ -46,6 +51,7 @@ Quilldeck existed before this hackathon as an Android app built on a different m
 - Built the **web app** (`quilldeck-api/public/index.html`) so anyone can use Quilldeck in a browser without installing an Android build.
 - **Book details entered once** and shared by both tools.
 - New **story-accuracy layer**: the facts field, fidelity rules, exact-name spelling and the no-invention rules.
+- **Live promo-site research** with Tavily, with every recommendation tied to a source URL.
 - **Series** field and series-aware launch copy.
 - **Reliability work**: reasoning off for speed, the launch plan split into three parallel requests, per-section validation and retries, placeholder detection.
 
@@ -55,8 +61,8 @@ The web app and the API are one Vercel project, in the `quilldeck-api` folder.
 
 1. Get an API key from [Nebius Token Factory](https://tokenfactory.nebius.com).
 2. Deploy `quilldeck-api` to Vercel (set the project's Root Directory to `quilldeck-api`).
-3. Add the environment variable `NEBIUS_API_KEY` with your key.
-4. Open the deployment URL. The web app is served from `/`, and the API from `/api/generate-blurb`, `/api/generate-marketing` and `/api/generate-metadata`.
+3. Add the environment variables `NEBIUS_API_KEY` (Nebius Token Factory) and `TAVILY_API_KEY` ([Tavily](https://tavily.com)).
+4. Open the deployment URL. The web app is served from `/`, and the API from `/api/generate-blurb`, `/api/generate-marketing`, `/api/research-promo` and `/api/generate-metadata`.
 
 Optional environment variables:
 
@@ -71,7 +77,7 @@ There is no build step and no npm dependencies; the functions use the platform `
 quilldeck-nemotron/
 ├── quilldeck-api/          # The hackathon entry: Vercel project
 │   ├── public/index.html   # Web app
-│   ├── api/                # Serverless endpoints (blurb, marketing, metadata)
+│   ├── api/                # Serverless endpoints (blurb, marketing, promo research, metadata)
 │   └── lib/nebius.ts       # Nemotron on Nebius Token Factory client
 ├── app/, components/,      # Android app source (Expo / React Native), included
 │   constants/, src/        # for reference; it still calls the original backend

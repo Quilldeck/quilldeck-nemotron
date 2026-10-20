@@ -533,18 +533,11 @@ Respond in valid JSON only, with both arrays filled:
 
   const planPromptB = (b, blurb) => `${planHeader(b, blurb)}
 
-Generate BOTH of the following:
+Generate AMAZON AD COPY: exactly 3 variants, each with a headline, body copy, and 5 keywords.
 
-1. AMAZON AD COPY (3 variants):
-   Each with headline, body copy, and 5 keywords
-
-2. PROMO SITES (5 recommendations):
-   Name, URL, cost, genre fit, submission notes
-
-Respond in valid JSON only, with both arrays filled:
+Respond in valid JSON only:
 {
-  "adCopy": [{"headline":"...","body":"...","keywords":["..."]}],
-  "promoSites": [{"name":"...","url":"...","cost":"...","genre":"...","notes":"..."}]
+  "adCopy": [{"headline":"...","body":"...","keywords":["..."]}]
 }`;
 
   const planPromptC = (b, blurb) => `${planHeader(b, blurb)}
@@ -589,13 +582,15 @@ Respond in valid JSON only:
     statusBox.replaceChildren();
   }
 
-  async function call(path, prompt, expect) {
+  const callJson = (path, body) => call(path, null, null, body);
+
+  async function call(path, prompt, expect, rawBody) {
     let res;
     try {
       res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(expect ? { prompt, expect } : { prompt }),
+        body: JSON.stringify(rawBody || (expect ? { prompt, expect } : { prompt })),
       });
     } catch (err) {
       throw { message: 'Could not reach the server. Check your connection and try again.', detail: err && err.message };
@@ -691,18 +686,19 @@ Respond in valid JSON only:
     if (problem) { showError(problem); $(focus).focus(); return; }
     knownNames = properNames(`${book.title} ${book.series} ${book.synopsis} ${book.facts}`);
     setBusy(true);
-    showWorking('building your launch plan', 'Posts, emails, ads, a 14-day calendar and promo sites, written in two parts at once. It usually takes 30 to 60 seconds.');
+    showWorking('building your launch plan', 'Posts, emails, ads and a 14-day calendar, while Tavily researches promo sites live on the web. It usually takes 15 to 45 seconds.');
     const blurb = chosenBlurb || book.synopsis;
     const halves = await Promise.allSettled([
       call('/api/generate-marketing', planPromptA(book, blurb), ['socialPosts', 'emails']),
-      call('/api/generate-marketing', planPromptB(book, blurb), ['adCopy', 'promoSites']),
+      call('/api/generate-marketing', planPromptB(book, blurb), ['adCopy']),
       call('/api/generate-marketing', planPromptC(book, blurb), ['calendar']),
+      callJson('/api/research-promo', { genre: book.genre, title: book.title }),
     ]);
     const data = {};
     const failures = [];
     halves.forEach((h, i) => {
       if (h.status === 'fulfilled' && h.value) Object.assign(data, h.value);
-      else failures.push({ part: ['social posts and emails', 'Amazon ads and promo sites', '14-day calendar'][i], err: h.reason || {} });
+      else failures.push({ part: ['social posts and emails', 'Amazon ads', '14-day calendar', 'promo site research'][i], err: h.reason || {} });
     });
     if (failures.length === halves.length) {
       showError(failures[0].err.message || 'Something went wrong. Try again.', failures[0].err.detail);
@@ -763,16 +759,24 @@ Respond in valid JSON only:
       return [t];
     }],
     ['Promo sites', (d) => {
-      const caveat = el('p', 'caveat', 'These suggestions come from the model\'s general knowledge. Check each site\'s current price and rules before you submit.');
+      const when = d.researchedAt ? new Date(d.researchedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+      const caveat = el('p', 'caveat', `Researched live on the web with Tavily${when ? ` on ${when}` : ''}. Each recommendation links to the page it came from. Prices and rules change, so confirm on the site before you submit.`);
       return [caveat, ...arr(d.promoSites).map((s) => {
         const body = el('p', 'body', s.notes || '');
         const n = item(s.name, [s.cost, s.genre].filter(Boolean).join(' · '), null, body);
+        const links = el('p', 'tags');
         if (s.url && /^https?:\/\//i.test(s.url)) {
-          const a = el('a', null, s.url);
+          const a = el('a', null, 'Visit site');
           a.href = s.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-          const p = el('p', 'tags'); p.append(a);
-          n.append(p);
+          links.append(a);
         }
+        if (s.source && /^https?:\/\//i.test(s.source) && s.source !== s.url) {
+          if (links.childNodes.length) links.append(document.createTextNode(' · '));
+          const a = el('a', null, 'Source');
+          a.href = s.source; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          links.append(a);
+        }
+        if (links.childNodes.length) n.append(links);
         return n;
       })];
     }],
