@@ -85,6 +85,6 @@ Built by [Phoenix F. Black](https://quilldeck.app), author, publisher and CEO of
 - Web: [quilldeck.app](https://quilldeck.app)
 - X: [@quilldeck0](https://x.com/quilldeck0)
 
-## License
+The code is released under the MIT licence. See [LICENSE](LICENSE).
 
-MIT. See [LICENSE](LICENSE).
+The Quilldeck name, logo and brand assets are not licensed under MIT. They remain the property of Taoscope Labs Ltd and may not be used to identify a derivative product or service.
