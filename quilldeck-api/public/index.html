@@ -770,9 +770,12 @@ Respond in valid JSON only:
           a.href = s.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
           links.append(a);
         }
+        if (!links.childNodes.length) links.append(document.createTextNode('Website not confirmed · '));
         if (s.source && /^https?:\/\//i.test(s.source) && s.source !== s.url) {
-          if (links.childNodes.length) links.append(document.createTextNode(' · '));
-          const a = el('a', null, 'Source');
+          if (links.childNodes.length && links.lastChild.nodeType !== 3) links.append(document.createTextNode(' · '));
+          let host = s.source;
+          try { host = new URL(s.source).hostname.replace(/^www\./, ''); } catch (_) {}
+          const a = el('a', null, `Found on ${host}`);
           a.href = s.source; a.target = '_blank'; a.rel = 'noopener noreferrer';
           links.append(a);
         }

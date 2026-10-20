@@ -28,17 +28,21 @@ function clip(text: unknown, max: number): string {
   return s.length > max ? `${s.slice(0, max)}...` : s;
 }
 
-async function tavilySearch(query: string): Promise<TavilyResult[]> {
+async function tavilyRequest(query: string, recentOnly: boolean): Promise<TavilyResult[]> {
+  const body: Record<string, unknown> = { query, search_depth: 'basic', max_results: 6, topic: 'general' };
+  if (recentOnly) body.time_range = 'year';
   const response = await fetch(TAVILY_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.TAVILY_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query, search_depth: 'basic', max_results: 6, topic: 'general' }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`Tavily returned HTTP ${response.status}: ${clip(await response.text(), 200)}`);
+    const text = await response.text();
+    if (recentOnly && response.status === 400) return tavilyRequest(query, false);
+    throw new Error(`Tavily returned HTTP ${response.status}: ${clip(text, 200)}`);
   }
   const data: any = await response.json();
   return Array.isArray(data?.results)
@@ -46,6 +50,12 @@ async function tavilySearch(query: string): Promise<TavilyResult[]> {
         .filter((r: any) => typeof r?.url === 'string' && /^https?:\/\//.test(r.url))
         .map((r: any) => ({ title: clip(r.title, 150), url: r.url, content: clip(r.content, 700) }))
     : [];
+}
+
+// Prices go stale quickly, so ask for pages from the last year first.
+async function tavilySearch(query: string): Promise<TavilyResult[]> {
+  const recent = await tavilyRequest(query, true);
+  return recent.length >= 2 ? recent : tavilyRequest(query, false);
 }
 
 const hostOf = (url: string) => {
@@ -130,16 +140,23 @@ Respond in valid JSON only:
   // is checked: no parking markers, and it must mention the service by name.
   const PARKED = /domain (?:name )?(?:is |may be )?for sale|buy this domain|this domain is parked|parked free|domain parking|make an offer on this domain|hugedomains|sedoparking|afternic|dan\.com|bodis\.com|parkingcrew/i;
   const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
+  // bargainbooksy.com for "Bargain Booksy", ereadernewstoday.com for "eReader News Today".
+  function hostCarriesName(url: string, name: string): boolean {
+    const label = squash(hostOf(url).split('.').slice(0, -1).join(''));
+    const full = squash(name.replace(/\(.*?\)/g, '')).replace(/^the/, '');
+    return full.length >= 6 && label.length >= 6 && (label.includes(full) || full.includes(label));
+  }
+
   async function siteIsReal(url: string, name: string): Promise<boolean> {
     if (!/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(url)) return false;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5000);
       const r = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Quilldeck/1.0)' } });
-      if (r.status >= 400 && r.status !== 403) { clearTimeout(timer); return false; }
+      const named = hostCarriesName(url, name);
+      if (r.status >= 400) { clearTimeout(timer); return named && [401, 403, 429, 503].includes(r.status); }
       // Cloudflare-style bot walls answer 403; trust those only when the
       // address itself carries the service's name.
-      if (r.status === 403) { clearTimeout(timer); return squash(hostOf(url)).includes(squash(name).slice(0, 6)); }
       const finalHost = hostOf((r as any).url || url);
       const html = (await r.text()).slice(0, 60000);
       clearTimeout(timer);
@@ -151,9 +168,10 @@ Respond in valid JSON only:
         // Short names or initials ("ENT") turn up inside ordinary words and on
         // unrelated sites, so they never count as proof on their own.
         .filter((v) => v.length >= 6);
-      return variants.some((v) => page.includes(v));
+      return named || variants.some((v) => page.includes(v));
     } catch {
-      return false;
+      // Timeouts and network errors: trust the address only if it is the name.
+      return hostCarriesName(url, name);
     }
   }
 
