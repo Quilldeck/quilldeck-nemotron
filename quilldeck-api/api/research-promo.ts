@@ -101,7 +101,8 @@ Below are live web search results. Using ONLY these results, recommend up to ${M
 
 Rules:
 - Every fact (name, cost, requirements) must come from the search results. Do not use outside knowledge.
-- "cost": the price exactly as a source states it; if no source states a price, write "Check the site".
+- "name": the service's full official name, not just initials (e.g. "eReader News Today", not "ENT").
+- "cost": the price exactly as a source states it, and what it buys, e.g. "$45-$55 per featured promotion (discounted ebook)" or "From $15 per newsletter feature". Say "monthly" or "subscription" only if the source does. If no source states a price, write "Check the site".
 - "url": the promotion service's own official website address (its home page), even if only a list article mentions it.
 - "source": the URL of the search result your facts came from, copied exactly from the list.
 - "genre": the genres the service itself covers, as stated in the source (not this book's genre); if not stated, write "Various".
@@ -147,7 +148,9 @@ Respond in valid JSON only:
       // "eReader News Today (ENT)" should match a page that says either.
       const variants = [name.replace(/\(.*?\)/g, ''), ...(name.match(/\(([^)]+)\)/g) ?? []).map((m) => m.slice(1, -1))]
         .map((v) => squash(v).replace(/^the/, ''))
-        .filter((v) => v.length >= 3);
+        // Short names or initials ("ENT") turn up inside ordinary words and on
+        // unrelated sites, so they never count as proof on their own.
+        .filter((v) => v.length >= 6);
       return variants.some((v) => page.includes(v));
     } catch {
       return false;

@@ -760,7 +760,7 @@ Respond in valid JSON only:
     }],
     ['Promo sites', (d) => {
       const when = d.researchedAt ? new Date(d.researchedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-      const caveat = el('p', 'caveat', `Researched live on the web with Tavily${when ? ` on ${when}` : ''}. Each recommendation links to the page it came from. Prices and rules change, so confirm on the site before you submit.`);
+      const caveat = el('p', 'caveat', `Researched live on the web with Tavily${when ? ` on ${when}` : ''}. Prices are what each site charges to feature your book once, unless stated otherwise. Each recommendation links to the page it came from; prices and rules change, so confirm on the site before you submit.`);
       return [caveat, ...arr(d.promoSites).map((s) => {
         const body = el('p', 'body', s.notes || '');
         const n = item(s.name, [s.cost, s.genre].filter(Boolean).join(' · '), null, body);
