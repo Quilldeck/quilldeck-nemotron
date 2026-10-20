@@ -125,18 +125,35 @@ Respond in valid JSON only:
   // A service's own site often only appears inside a list article. Check the
   // official address the model gives actually responds before showing it as
   // "Visit site"; otherwise the reader just gets the source article.
-  async function siteResponds(url: string): Promise<boolean> {
+  // Parked "domain for sale" pages answer like a real site, so the page itself
+  // is checked: no parking markers, and it must mention the service by name.
+  const PARKED = /domain (?:name )?(?:is |may be )?for sale|buy this domain|this domain is parked|parked free|domain parking|make an offer on this domain|hugedomains|sedoparking|afternic|dan\.com|bodis\.com|parkingcrew/i;
+  const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
+  async function siteIsReal(url: string, name: string): Promise<boolean> {
     if (!/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(url)) return false;
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4000);
+      const timer = setTimeout(() => controller.abort(), 5000);
       const r = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Quilldeck/1.0)' } });
+      if (r.status >= 400 && r.status !== 403) { clearTimeout(timer); return false; }
+      // Cloudflare-style bot walls answer 403; trust those only when the
+      // address itself carries the service's name.
+      if (r.status === 403) { clearTimeout(timer); return squash(hostOf(url)).includes(squash(name).slice(0, 6)); }
+      const finalHost = hostOf((r as any).url || url);
+      const html = (await r.text()).slice(0, 60000);
       clearTimeout(timer);
-      return r.status < 400 || r.status === 403;
+      if (PARKED.test(finalHost) || PARKED.test(html)) return false;
+      const page = squash(html.replace(/<[^>]+>/g, ' '));
+      // "eReader News Today (ENT)" should match a page that says either.
+      const variants = [name.replace(/\(.*?\)/g, ''), ...(name.match(/\(([^)]+)\)/g) ?? []).map((m) => m.slice(1, -1))]
+        .map((v) => squash(v).replace(/^the/, ''))
+        .filter((v) => v.length >= 3);
+      return variants.some((v) => page.includes(v));
     } catch {
       return false;
     }
   }
+
 
   // Keep only recommendations that cite a real search result.
   const sourceUrls = new Set(sources.map((s) => s.url));
@@ -164,7 +181,7 @@ Respond in valid JSON only:
     const isListArticle = (citations.get(sourceHost) ?? 0) > 1;
     const verified = !!ownHost && (ownHost === sourceHost
       ? !isListArticle
-      : sourceHosts.has(ownHost) || (await siteResponds(own)));
+      : sourceHosts.has(ownHost) || (await siteIsReal(own, s.name)));
     return {
       name: clip(s.name, 80),
       url: verified ? own : '',
