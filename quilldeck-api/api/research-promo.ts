@@ -102,8 +102,10 @@ Below are live web search results. Using ONLY these results, recommend up to ${M
 Rules:
 - Every fact (name, cost, requirements) must come from the search results. Do not use outside knowledge.
 - "cost": the price exactly as a source states it; if no source states a price, write "Check the site".
-- "url": the promotion service's own website if it appears in the results, otherwise the source URL.
+- "url": the promotion service's own official website address (its home page), even if only a list article mentions it.
 - "source": the URL of the search result your facts came from, copied exactly from the list.
+- "genre": the genres the service itself covers, as stated in the source (not this book's genre); if not stated, write "Various".
+- Recommend each service once. Do not list two services that are really the same company.
 - "notes": one or two sentences on fit and submission requirements, as stated in the source.
 - Skip list articles, forums and the search results that are not themselves a promotion service, except as a source.
 - Write in British English. Do not use em dashes.
@@ -120,20 +122,58 @@ Respond in valid JSON only:
     return res.status(result.status).json({ error: result.error, detail: result.detail });
   }
 
+  // A service's own site often only appears inside a list article. Check the
+  // official address the model gives actually responds before showing it as
+  // "Visit site"; otherwise the reader just gets the source article.
+  async function siteResponds(url: string): Promise<boolean> {
+    if (!/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(url)) return false;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const r = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Quilldeck/1.0)' } });
+      clearTimeout(timer);
+      return r.status < 400 || r.status === 403;
+    } catch {
+      return false;
+    }
+  }
+
   // Keep only recommendations that cite a real search result.
   const sourceUrls = new Set(sources.map((s) => s.url));
   const sourceHosts = new Set(sources.map((s) => hostOf(s.url)));
-  const promoSites = (Array.isArray(result.data?.promoSites) ? result.data.promoSites : [])
+  const seenNames = new Set<string>();
+  const picked = (Array.isArray(result.data?.promoSites) ? result.data.promoSites : [])
     .filter((s) => s && typeof s.name === 'string' && sourceUrls.has(s.source))
-    .map((s) => ({
+    .filter((s) => {
+      const key = s.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return key && !seenNames.has(key) && (seenNames.add(key), true);
+    })
+    .slice(0, MAX_SITES);
+
+  const citations = new Map<string, number>();
+  for (const s of picked) citations.set(hostOf(s.source), (citations.get(hostOf(s.source)) ?? 0) + 1);
+
+  const promoSites = await Promise.all(picked.map(async (s) => {
+    const own = typeof s.url === 'string' ? s.url.trim() : '';
+    const ownHost = hostOf(own);
+    // Verified if it is in the search results, or if the address really responds
+    // and is not just the list article again.
+    // A source page on the service's own site is fine; a page that several
+    // picks cite (a "best promo sites" list) is not that service's website.
+    const sourceHost = hostOf(s.source);
+    const isListArticle = (citations.get(sourceHost) ?? 0) > 1;
+    const verified = !!ownHost && (ownHost === sourceHost
+      ? !isListArticle
+      : sourceHosts.has(ownHost) || (await siteResponds(own)));
+    return {
       name: clip(s.name, 80),
-      url: /^https?:\/\//.test(s.url) && sourceHosts.has(hostOf(s.url)) ? s.url : s.source,
+      url: verified ? own : '',
       cost: clip(s.cost || 'Check the site', 80),
-      genre: clip(s.genre || genre, 60),
+      genre: clip(s.genre || 'Various', 60),
       notes: clip(s.notes, 400),
       source: s.source,
-    }))
-    .slice(0, MAX_SITES);
+    };
+  }));
 
   if (promoSites.length === 0) {
     return res.status(502).json({ error: 'The research came back without sourced recommendations. Please try again.' });
