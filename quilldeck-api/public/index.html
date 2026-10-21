@@ -363,9 +363,23 @@ footer.site p { margin: 0 0 6px; }
       return w;
     });
   }
-  const clean = (t) => fixNames(toBritish(noDashes(String(t)
+  // Nemotron invents "opening lines", excerpts and dialogue and attributes
+  // them to the book. Any quoted passage of 8+ words that is not in the
+  // author's own text (synopsis, facts, chosen blurb) is replaced.
+  let authorText = '';
+  const squashText = (t) => String(t).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  function noInventedQuotes(text) {
+    if (!authorText) return text;
+    // An opening quote mark must follow a space or the start (so the
+    // apostrophe in "Klan's" is never treated as one).
+    return text.replace(/(^|[\s(:\[])(["“‘'])([^"“”‘’'\n]{30,}?)(["”’'])(?![\p{L}])/gu, (m, pre, open, inner) => {
+      if (inner.trim().split(/\s+/).length < 8) return m;
+      return authorText.includes(squashText(inner)) ? m : `${pre}[a line from your book]`;
+    });
+  }
+  const clean = (t) => noInventedQuotes(fixNames(toBritish(noDashes(String(t)
     .replace(/\*\*([^*\n]+)\*\*/g, '$1')
-    .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2'))));
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, '$1$2')))));
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -507,7 +521,9 @@ ${fidelity(b)}
 
 Use the ACTUAL book title, genre, and character/world details from the synopsis throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis. Write in British English (colour, favourite, realise, centre, grey). Do not use em dashes or en dashes; use commas, full stops or colons instead.
 
-Do NOT invent facts the author has not given you: no made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].`;
+Do NOT invent facts the author has not given you: no made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].
+
+Never present any text as a quotation, opening line, first line, excerpt or dialogue from the book unless that exact text appears in the synopsis, the author's facts or the chosen blurb. For a quote post, write [a line from your book] for the author to fill in.`;
 
   const planPromptA = (b, blurb) => `${planHeader(b, blurb)}
 
@@ -620,6 +636,7 @@ Respond in valid JSON only:
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
     knownNames = properNames(`${book.title} ${book.series} ${book.synopsis} ${book.facts}`);
+    authorText = squashText(`${book.synopsis} ${book.facts} ${chosenBlurb || ''}`);
     setBusy(true);
     showWorking('writing your blurbs', 'This usually takes 15 to 45 seconds.');
     try {
@@ -685,6 +702,7 @@ Respond in valid JSON only:
     const { book, problem, focus } = readBook();
     if (problem) { showError(problem); $(focus).focus(); return; }
     knownNames = properNames(`${book.title} ${book.series} ${book.synopsis} ${book.facts}`);
+    authorText = squashText(`${book.synopsis} ${book.facts} ${chosenBlurb || ''}`);
     setBusy(true);
     showWorking('building your launch plan', 'Posts, emails, ads and a 14-day calendar, while Tavily researches promo sites live on the web. It usually takes 15 to 45 seconds.');
     const blurb = chosenBlurb || book.synopsis;
