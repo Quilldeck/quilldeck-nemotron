@@ -170,8 +170,8 @@ Respond in valid JSON only:
         .filter((v) => v.length >= 6);
       return named || variants.some((v) => page.includes(v));
     } catch {
-      // Timeouts and network errors: trust the address only if it is the name.
-      return hostCarriesName(url, name);
+      // The address does not exist or did not answer: never show it.
+      return false;
     }
   }
 
@@ -188,24 +188,30 @@ Respond in valid JSON only:
     })
     .slice(0, MAX_SITES);
 
-  const citations = new Map<string, number>();
-  for (const s of picked) citations.set(hostOf(s.source), (citations.get(hostOf(s.source)) ?? 0) + 1);
+  // A "Visit site" link must point at an address that carries the service's
+  // own name (bookbub.com for BookBub). Nemotron's suggested address is tried
+  // first; if it fails, a dedicated Tavily search looks for the official site.
+  async function findOfficialSite(name: string): Promise<string> {
+    try {
+      const hits = await tavilyRequest(`${name.replace(/\(.*?\)/g, '').trim()} official website book promotion`, false);
+      for (const h of hits) {
+        const home = `https://${hostOf(h.url)}`;
+        if (hostCarriesName(home, name) && (await siteIsReal(home, name))) return home;
+      }
+    } catch (error: any) {
+      console.error('research-promo: site lookup failed for', name, error?.message);
+    }
+    return '';
+  }
 
   const promoSites = await Promise.all(picked.map(async (s) => {
     const own = typeof s.url === 'string' ? s.url.trim() : '';
-    const ownHost = hostOf(own);
-    // Verified if it is in the search results, or if the address really responds
-    // and is not just the list article again.
-    // A source page on the service's own site is fine; a page that several
-    // picks cite (a "best promo sites" list) is not that service's website.
-    const sourceHost = hostOf(s.source);
-    const isListArticle = (citations.get(sourceHost) ?? 0) > 1;
-    const verified = !!ownHost && (ownHost === sourceHost
-      ? !isListArticle
-      : sourceHosts.has(ownHost) || (await siteIsReal(own, s.name)));
+    let url = '';
+    if (own && hostCarriesName(own, s.name) && (await siteIsReal(own, s.name))) url = own;
+    if (!url) url = await findOfficialSite(s.name);
     return {
       name: clip(s.name, 80),
-      url: verified ? own : '',
+      url,
       cost: clip(s.cost || 'Check the site', 80),
       genre: clip(s.genre || 'Various', 60),
       notes: clip(s.notes, 400),
