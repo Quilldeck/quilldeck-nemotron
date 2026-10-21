@@ -46,7 +46,16 @@ export default async function handler(req: any, res: any) {
   const usable = (b: any) => {
     const text = typeof b?.text === 'string' ? b.text.trim() : '';
     if (/^<[^>]*>$/.test(text) || /full blurb text here/i.test(text)) return false;
-    return text.split(/\s+/).filter(Boolean).length >= MIN_WORDS;
+    const words = text.split(/\s+/).filter(Boolean).length;
+    if (words < MIN_WORDS) return false;
+    // Degraded output: Nemotron occasionally drops nearly all punctuation.
+    // Real back-cover copy has a sentence break every 35 words or fewer.
+    const sentenceBreaks = (text.match(/[.!?…](?=\s|$)/g) ?? []).length;
+    if (sentenceBreaks < Math.max(3, Math.floor(words / 35))) return false;
+    // Back-cover copy is third person; a blurb narrated as "I/we" is a miss.
+    const outsideQuotes = text.replace(/["“][^"”]*["”]/g, ' ');
+    const firstPerson = (outsideQuotes.match(/\b(?:I|me|my|we|us|our)\b/g) ?? []).length;
+    return firstPerson < 3;
   };
   let lastError: { status: number; error: string; detail: string } | null = null;
 

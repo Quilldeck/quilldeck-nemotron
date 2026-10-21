@@ -476,7 +476,7 @@ footer.site p { margin: 0 0 6px; }
 - Do not invent plot events, captures, betrayals, prophecies, names, titles, creatures or backstory that are not stated.
 - Do not assign a heritage, culture, religion or tradition to any character unless the text explicitly does. If it is unclear which parent or character carries which heritage, do not say.
 - Do not assume any character's gender. Use only the pronouns the synopsis or the author's facts use for that character; if none are given, use the character's name instead of a pronoun.
-- Where the story is vague, write around the gap with atmosphere and stakes rather than filling it with specifics.${names.length ? `\n- Spell these names exactly as written: ${names.join(', ')}.` : ''}${b.series ? `\n- Series: ${b.series}. Mention this once, naturally (e.g. "Book One of ..."). Do not invent titles, plots or release dates for other books in the series.` : ''}${b.facts ? `\n\nAuthor's facts (must be respected exactly):\n${b.facts}` : ''}`;
+- Where the story is vague, write around the gap with atmosphere and stakes rather than filling it with specifics.${names.length ? `\n- Spell these names exactly as written: ${names.join(', ')}.` : ''}${b.series ? `\n- Series: ${b.series}. Mention this once, naturally (e.g. "Book One of ..."). Do not invent titles, plots or release dates for other books in the series.` : ''}${b.facts ? `\n\nAuthor's facts (must be respected exactly; they keep the copy accurate, so do not repeat them as statements in the copy, e.g. never write that someone "is not" something):\n${b.facts}` : ''}`;
   };
 
   const blurbPrompt = (b) => `${b.primer}You are a professional book marketing copywriter specialising in ${b.genre} fiction.
@@ -499,6 +499,8 @@ Requirements for EACH blurb:
 - Include genre-appropriate tone and language
 - Write in British English (colour, favourite, realise, centre, grey). Do not use em dashes or en dashes; use commas, full stops or colons instead.
 - Be ready to paste directly into KDP
+- Write in the third person, as back-cover copy (never as a character or narrator saying I, my, we or our)
+- Use complete sentences with normal punctuation
 - No spoilers beyond Act 1
 - Use the actual character names and world details from the synopsis, and nothing the synopsis does not say
 
