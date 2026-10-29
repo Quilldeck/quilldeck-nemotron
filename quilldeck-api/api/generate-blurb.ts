@@ -1,4 +1,5 @@
 import { generateJson } from '../lib/nebius';
+import { guard } from '../lib/guard';
 
 interface BlurbPayload {
   blurbs: { variant: number; hook: string; text: string }[];
@@ -8,6 +9,73 @@ interface BlurbPayload {
 // retry if there is realistically time for it to finish.
 const RETRY_CUTOFF_MS = 60_000;
 const MIN_WORDS = 60;
+// The fact-check runs only if there is time left within maxDuration.
+const FACT_CHECK_CUTOFF_MS = 70_000;
+
+type Blurb = { variant: number; hook: string; text: string };
+interface FactCheckReport {
+  checked: boolean;
+  fixes: { hook: string; quote: string; problem: string; fix: string }[];
+}
+interface FactCheckPayload {
+  checks: { hook: string; issues?: { quote?: string; problem?: string; fix?: string }[]; revised?: string }[];
+}
+
+const clip = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+
+// Generate, critique, revise: a second Nemotron pass acts as a continuity
+// editor. It may only flag contradictions, invented specifics and misspelt
+// names, and must make the smallest change that fixes each one. A revision is
+// accepted only if it still passes the same quality checks as the original.
+async function factCheckBlurbs(
+  blurbs: Blurb[],
+  source: { title?: unknown; synopsis: string; facts?: unknown },
+  rejectReason: (b: any) => string | null,
+): Promise<{ blurbs: Blurb[]; report: FactCheckReport }> {
+  const prompt = `You are a meticulous continuity editor for a publisher. Check book blurbs against the author's source text, which is the ONLY truth about the story.
+
+SOURCE
+Title: ${clip(source.title, 160)}
+Synopsis: ${clip(source.synopsis, 4000)}${source.facts ? `\nAuthor's facts (always correct): ${clip(source.facts, 1500)}` : ''}
+
+BLURBS
+${JSON.stringify(blurbs.map((b) => ({ hook: b.hook, text: b.text })))}
+
+Check every sentence of every blurb. Flag ONLY these problems:
+1. It contradicts the source: who someone is, their heritage, gender or relationships, who did what, where or when.
+2. It states a specific plot event, name, place, title or quotation that the source does not contain.
+3. A name is spelt differently from the source.
+Do NOT flag tone, atmosphere, emotion, style, rhetorical questions or general phrasing the source supports. When in doubt, do not flag.
+
+For each blurb with problems, rewrite it with the smallest change that fixes each problem. Keep its hook, length, third person and British English, and do not use em dashes. If a blurb has no problems, give an empty "issues" list and an empty "revised".
+
+Respond in valid JSON only:
+{"checks":[{"hook":"emotional","issues":[{"quote":"exact words from the blurb","problem":"why it is wrong, citing the source","fix":"the replacement words"}],"revised":""}]}`;
+
+  const result = await generateJson<FactCheckPayload>(prompt, 4000);
+  if (!result.ok || !Array.isArray(result.data?.checks)) {
+    console.error('generate-blurb: fact-check unavailable:', result.ok ? 'no checks array' : result.error);
+    return { blurbs, report: { checked: false, fixes: [] } };
+  }
+  const fixes: FactCheckReport['fixes'] = [];
+  const out = blurbs.map((b) => {
+    const check = result.data.checks.find((c) => String(c?.hook).toLowerCase() === b.hook);
+    const issues = Array.isArray(check?.issues) ? check!.issues.filter((i) => i && i.quote && i.problem) : [];
+    const revised = typeof check?.revised === 'string' ? check.revised.trim() : '';
+    if (issues.length === 0 || !revised) return b;
+    const before = b.text.split(/\s+/).length;
+    const after = revised.split(/\s+/).length;
+    const why = rejectReason({ text: revised });
+    if (why || after < before * 0.7 || after > before * 1.3) {
+      console.error(`generate-blurb: fact-check revision of ${b.hook} rejected:`, why || `length ${before} -> ${after}`);
+      return b;
+    }
+    for (const i of issues) fixes.push({ hook: b.hook, quote: clip(i.quote, 200), problem: clip(i.problem, 300), fix: clip(i.fix, 200) });
+    return { ...b, text: revised };
+  });
+  console.error(`generate-blurb: fact-check made ${fixes.length} fix(es)`);
+  return { blurbs: out, report: { checked: true, fixes } };
+}
 
 // Nemotron occasionally echoes the response template instead of writing
 // ("<first blurb>", "Full blurb text here..."). A valid-looking JSON object full
@@ -29,14 +97,8 @@ function problemWith(data: BlurbPayload | undefined): string | null {
 }
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { prompt } = req.body ?? {};
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required' });
-  }
+  const { prompt, synopsis, facts, title } = req.body ?? {};
+  if (!guard(req, res, ['STORY ACCURACY (most important)', 'Generate exactly 3 different book blurbs'], prompt)) return;
 
   const started = Date.now();
   const HOOKS = ['emotional', 'action', 'mystery'];
@@ -87,16 +149,22 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  if (kept.size === 3) {
-    return res.status(200).json({ blurbs: HOOKS.map((h) => kept.get(h)) });
+  if (kept.size > 0) {
+    let blurbs = HOOKS.filter((h) => kept.has(h)).map((h) => kept.get(h)!);
+    let factCheck: FactCheckReport = { checked: false, fixes: [] };
+    // Agent step: Nemotron reviews its own blurbs against the author's source
+    // text and repairs any sentence that contradicts it or invents a fact.
+    if (typeof synopsis === 'string' && synopsis.trim() && Date.now() - started < FACT_CHECK_CUTOFF_MS) {
+      const checked = await factCheckBlurbs(blurbs, { title, synopsis, facts }, rejectReason);
+      blurbs = checked.blurbs;
+      factCheck = checked.report;
+    }
+    if (blurbs.length < 3) console.error('generate-blurb: returning', blurbs.length, 'of 3 blurbs');
+    return res.status(200).json({ blurbs, factCheck, ...(blurbs.length < 3 ? { partial: true } : {}) });
   }
   if (kept.size === 0 && lastError) {
     console.error('generate-blurb failed:', lastError.error, '|', lastError.detail);
     return res.status(lastError.status).json({ error: lastError.error, detail: lastError.detail });
-  }
-  if (kept.size > 0) {
-    console.error('generate-blurb: returning', kept.size, 'of 3 blurbs');
-    return res.status(200).json({ blurbs: HOOKS.filter((h) => kept.has(h)).map((h) => kept.get(h)), partial: true });
   }
   return res.status(502).json({ error: 'The blurbs came back unusable. Please try again.', detail: 'Got 0 of 3 usable blurbs' });
 }

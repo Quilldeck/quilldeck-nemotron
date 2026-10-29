@@ -1,4 +1,5 @@
 import { generateJson } from '../lib/nebius';
+import { guard } from '../lib/guard';
 
 // Live promo-site research: Tavily searches the web for book promotion
 // services that suit this genre, then Nemotron picks the best five using ONLY
@@ -67,7 +68,7 @@ const hostOf = (url: string) => {
 };
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!guard(req, res)) return;
   if (!process.env.TAVILY_API_KEY) {
     return res.status(500).json({ error: 'Server is not configured: TAVILY_API_KEY is missing' });
   }

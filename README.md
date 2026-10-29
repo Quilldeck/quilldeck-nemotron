@@ -32,10 +32,20 @@ What we learned building on it, and how the code responds:
 | Finding | What the code does |
 |---|---|
 | With reasoning on, Nemotron 3 Super took 30 to 90 seconds per request on the shared endpoint. | Reasoning is switched off with `chat_template_kwargs: {"enable_thinking": false}`, which cut blurb generation to 4 to 10 seconds with no visible loss in copy quality. It falls back automatically if an endpoint rejects the setting (`NEBIUS_THINKING=on` restores reasoning). |
-| One long five-section JSON request sometimes came back with whole sections missing. | The launch plan runs as three smaller requests in parallel. The server checks every expected section and retries only what is missing, within the time limit. |
+| One long five-section JSON request sometimes came back with whole sections missing. | The launch plan runs as smaller requests in parallel. The server checks every expected section and retries only what is missing, within the time limit. |
 | The model occasionally returned the JSON template itself (`"<first blurb>"`) instead of writing. | The blurb endpoint rejects placeholders and blurbs under 60 words, then retries. |
 | Given a vague synopsis, the model invented story facts and drifted on invented names (Gardenia, Gardena, Gardinia). | Every prompt treats the synopsis and the author's facts as the only source of truth, and passes an exact-spelling list of the book's proper nouns. |
 | Without explicit limits, launch copy invented events, giveaways, prices and social handles. | The prompts forbid them and use clear placeholders instead, e.g. `[pre-order link]`. |
+
+### The agent workflow: plan, write, check, repair, research
+
+Quilldeck does not send one prompt and hope. Each request runs as a small agent workflow on Nemotron:
+
+1. **Plan.** The book is entered once. The app turns it into separate jobs (blurbs; posts and emails; Amazon ads; a 14-day calendar; promo research), each carrying the author's facts and an exact-spelling list of the book's names.
+2. **Write.** Nemotron drafts each part, in parallel where it can.
+3. **Check its own output.** The server inspects every result for missing sections, echoed templates, and blurbs that are too short, unpunctuated or in the first person. It keeps what passes and asks again only for what failed.
+4. **Fact-check and repair.** A second Nemotron pass acts as a continuity editor. It reads the blurbs against the author's synopsis and facts, flags any sentence that contradicts them, invents a specific event, name or quotation, or misspells a name, and makes the smallest fix. A repair is accepted only if it still passes every quality check, and the author sees exactly what was corrected and why.
+5. **Research and verify.** For promotion, Tavily searches the live web, Nemotron chooses only from what was found, every recommendation must cite a source, and every website link is checked before it is shown.
 
 ### Live research with Tavily
 
@@ -53,6 +63,8 @@ Quilldeck existed before this hackathon as an Android app built on a different m
 - New **story-accuracy layer**: the facts field, fidelity rules, exact-name spelling and the no-invention rules.
 - **Live promo-site research** with Tavily, with every recommendation tied to a source URL.
 - **Series** field and series-aware launch copy.
+- **Fact-check agent step**: a second Nemotron pass checks every blurb against the synopsis and facts, repairs contradictions and invented details, and reports each correction.
+- **Demo protection**: endpoints serve only the app's own page (same-origin check, request-size cap, Quilldeck request markers, per-visitor rate limit), in [`quilldeck-api/lib/guard.ts`](quilldeck-api/lib/guard.ts).
 - **Reliability work**: reasoning off for speed, the launch plan split into three parallel requests, per-section validation and retries, placeholder detection.
 
 ## Run it yourself

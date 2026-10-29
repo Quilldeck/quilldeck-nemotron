@@ -1,4 +1,5 @@
 import { generateJson } from '../lib/nebius';
+import { guard } from '../lib/guard';
 
 // Deliberately small schema -- roughly the size of the blurb payload. The large
 // Go Market This schema has been unreliable on gpt-oss-120b; small ones hold up.
@@ -21,15 +22,8 @@ function isComplete(data: MetadataPayload | undefined): boolean {
 }
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { prompt } = req.body;
-
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required' });
-  }
+  const { prompt } = req.body ?? {};
+  if (!guard(req, res, [], prompt)) return;
 
   let result = await generateJson<MetadataPayload>(prompt, 3000);
 

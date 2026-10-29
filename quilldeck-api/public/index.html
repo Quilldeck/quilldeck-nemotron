@@ -134,6 +134,14 @@ section.results > .sub { margin: 0 0 20px; color: var(--bone-dim); }
 .blurb .count { color: #6E6A5E; font-size: 0.9rem; margin-right: auto; }
 .blurb button { padding: 9px 14px; font-size: 0.9rem; }
 
+/* Fact-check report */
+.factcheck { margin: -8px 0 20px; padding: 12px 16px; border-left: 3px solid var(--gold); background: var(--navy-raised); border-radius: 0 10px 10px 0; color: var(--bone-dim); font-size: 0.95rem; }
+.factcheck p { margin: 0; }
+.factcheck summary { cursor: pointer; color: var(--bone); }
+.factcheck ul { margin: 10px 0 0; padding-left: 20px; }
+.factcheck li { margin: 0 0 8px; }
+.factcheck strong { color: var(--gold-soft); }
+
 /* Feedback invitation */
 .feedback { margin: 48px 0 0; padding: 22px 24px; border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 0 12px 12px 0; background: var(--navy-raised); }
 .feedback h2 { margin: 0 0 6px; font: 600 1.3rem/1.3 var(--serif); }
@@ -262,6 +270,7 @@ footer.site p { margin: 0 0 6px; }
   <section class="results hidden" id="blurbResults" aria-labelledby="blurbHead">
     <h2 id="blurbHead">Three blurbs, three hooks</h2>
     <p class="sub" id="blurbSub">Ready to paste into KDP. Pick one to use in your launch plan.</p>
+    <div id="factCheck" class="factcheck hidden"></div>
     <div id="blurbs"></div>
   </section>
 
@@ -657,7 +666,9 @@ Respond in valid JSON only:
     setBusy(true);
     showWorking('writing your blurbs', 'This usually takes 15 to 45 seconds.');
     try {
-      const data = await call('/api/generate-blurb', blurbPrompt(book));
+      // The synopsis and facts travel separately too, so the server's
+      // fact-check pass can compare each blurb against the author's own text.
+      const data = await callJson('/api/generate-blurb', { prompt: blurbPrompt(book), synopsis: book.synopsis, facts: book.facts, title: book.title });
       const usable = data && Array.isArray(data.blurbs) && data.blurbs.length > 0 && data.blurbs.every((x) => String((x && x.text) || '').split(/\s+/).filter(Boolean).length >= 40);
       if (!usable) throw { message: 'The blurbs came back unusable. Try again.' };
       clearStatus();
@@ -666,6 +677,7 @@ Respond in valid JSON only:
       $('blurbSub').textContent = n < 3
         ? `Nemotron wrote ${n} usable blurb${n > 1 ? 's' : ''} this time. Press Write 3 blurbs again for a fresh set, or use ${n > 1 ? 'one of these' : 'this one'}.`
         : 'Ready to paste into KDP. Pick one to use in your launch plan.';
+      renderFactCheck(data.factCheck);
     } catch (e) {
       showError(e.message || 'Something went wrong. Try again.', e.detail);
     } finally {
@@ -674,6 +686,30 @@ Respond in valid JSON only:
   });
 
   const HOOK_NAMES = { emotional: 'The emotional hook', action: 'The action hook', mystery: 'The mystery hook' };
+
+  // Report from the server's fact-check pass: a second Nemotron call that
+  // compares each blurb with the synopsis and facts and repairs contradictions.
+  function renderFactCheck(fc) {
+    const box = $('factCheck');
+    box.replaceChildren();
+    if (!fc || !fc.checked) { box.classList.add('hidden'); return; }
+    const fixes = Array.isArray(fc.fixes) ? fc.fixes : [];
+    if (fixes.length === 0) {
+      box.append(el('p', null, '✓ Fact-checked: a second Nemotron pass compared every blurb with your synopsis and facts and found nothing to correct.'));
+    } else {
+      const det = el('details');
+      det.append(el('summary', null, `✓ Fact-checked: ${fixes.length} correction${fixes.length > 1 ? 's' : ''} made before you saw these blurbs (show)`));
+      const list = el('ul');
+      for (const f of fixes) {
+        const li = el('li');
+        li.append(el('strong', null, `${HOOK_NAMES[f.hook] || 'A blurb'}: `), document.createTextNode(`changed "${noDashes(String(f.quote))}" to "${clean(f.fix)}". ${clean(f.problem)}`));
+        list.append(li);
+      }
+      det.append(list);
+      box.append(det);
+    }
+    box.classList.remove('hidden');
+  }
 
   function showFeedback() {
     if (!FEEDBACK_URL) return;
