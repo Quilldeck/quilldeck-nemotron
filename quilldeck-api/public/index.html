@@ -575,7 +575,7 @@ Respond in valid JSON only, with both arrays filled:
 
   const planPromptB = (b, blurb) => `${planHeader(b, blurb)}
 
-Generate AMAZON AD COPY: exactly 3 variants, each with a headline, body copy, and 5 keywords.
+Generate AMAZON AD COPY: exactly 3 variants, each with a headline, body copy, and 5 keywords. Use exactly the JSON keys shown below ("headline", "body", "keywords") and fill every one with real text.
 
 Respond in valid JSON only:
 {
@@ -702,7 +702,7 @@ Respond in valid JSON only:
       const list = el('ul');
       for (const f of fixes) {
         const li = el('li');
-        li.append(el('strong', null, `${HOOK_NAMES[f.hook] || 'A blurb'}: `), document.createTextNode(`changed "${noDashes(String(f.quote))}" to "${clean(f.fix)}". ${clean(f.problem)}`));
+        li.append(el('strong', null, `${HOOK_NAMES[f.hook] || 'A blurb'}: `), document.createTextNode(`changed "${noDashes(String(f.quote))}" to "${clean(f.fix)}". ${noDashes(String(f.problem))}`));
         list.append(li);
       }
       det.append(list);
@@ -823,9 +823,13 @@ Respond in valid JSON only:
     })],
     ['Emails', (d) => arr(d.emails).map((m) => item(m.subjectLine, `${sentence(m.type) || 'Email'}${m.subjectLineAlt ? ` · or try: ${m.subjectLineAlt}` : ''}`, m.body, null, `Subject: ${m.subjectLine}\n\n${m.body}`))],
     ['Amazon ads', (d) => arr(d.adCopy).map((a) => {
-      const kw = arr(a.keywords).join(', ');
-      return item(a.headline, null, a.body, kw ? el('p', 'tags', `Keywords: ${kw}`) : null, `${a.headline}\n\n${a.body}`);
-    })],
+      const pick = (...ks) => ks.map((k) => a && a[k]).find((v) => typeof v === 'string' && v.trim()) || '';
+      const headline = pick('headline', 'title', 'Headline', 'adHeadline', 'heading');
+      const body = pick('body', 'bodyCopy', 'body_copy', 'copy', 'text', 'description', 'content');
+      const kw = arr(a && (a.keywords || a.keywordList)).join(', ');
+      if (!headline && !body) return null;
+      return item(headline, null, body, kw ? el('p', 'tags', `Keywords: ${kw}`) : null, [headline, body].filter(Boolean).join('\n\n'));
+    }).filter(Boolean)],
     ['14-day calendar', (d) => {
       const t = el('table', 'cal');
       const tb = el('tbody');

@@ -13,8 +13,45 @@ type MarketingPayload = Partial<Record<Section, unknown[]>>;
 // retry if there is realistically time for it to finish.
 const RETRY_CUTOFF_MS = 55_000;
 
+// Nemotron sometimes renames fields (e.g. "title" or "bodyCopy" instead of
+// "headline" and "body"). Map the common variants onto the names the apps use,
+// then treat a section as missing if its items have no real text in them.
+const ALIASES: Record<string, Record<string, string[]>> = {
+  socialPosts: { content: ['content', 'text', 'post', 'caption', 'body', 'script'] },
+  emails: { subjectLine: ['subjectLine', 'subject', 'subject_line', 'title'], body: ['body', 'content', 'text', 'email'] },
+  adCopy: { headline: ['headline', 'title', 'Headline', 'adHeadline', 'heading'], body: ['body', 'bodyCopy', 'body_copy', 'copy', 'text', 'description', 'adCopy', 'content'] },
+  calendar: { content: ['content', 'contentSnippet', 'snippet', 'post', 'text', 'description'] },
+};
+const REQUIRED: Record<string, string[]> = {
+  socialPosts: ['content'], emails: ['body'], adCopy: ['headline', 'body'], calendar: ['content'],
+};
+const hasText = (v: unknown) => typeof v === 'string' && v.trim().length > 2;
+
+function normalise(data: MarketingPayload): void {
+  for (const [section, fields] of Object.entries(ALIASES)) {
+    const items = (data as any)[section];
+    if (!Array.isArray(items)) continue;
+    for (const it of items) {
+      if (!it || typeof it !== 'object') continue;
+      for (const [field, names] of Object.entries(fields)) {
+        if (hasText(it[field])) continue;
+        const found = names.map((n) => it[n]).find(hasText);
+        if (found) it[field] = found;
+      }
+    }
+  }
+}
+
 function missingSections(data: MarketingPayload, expected: readonly Section[]): Section[] {
-  return expected.filter((key) => !Array.isArray(data[key]) || (data[key] as unknown[]).length === 0);
+  normalise(data);
+  return expected.filter((key) => {
+    const items = data[key];
+    if (!Array.isArray(items) || items.length === 0) return true;
+    const req = REQUIRED[key];
+    if (!req) return false;
+    const good = (items as any[]).filter((it) => it && req.every((f) => hasText(it[f])));
+    return good.length === 0;
+  });
 }
 
 export default async function handler(req: any, res: any) {
