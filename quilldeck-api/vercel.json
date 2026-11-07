@@ -1,1 +1,1 @@
-{"functions":{"api/generate-marketing.ts":{"maxDuration":120},"api/generate-blurb.ts":{"maxDuration":120},"api/generate-metadata.ts":{"maxDuration":120},"api/research-promo.ts":{"maxDuration":90}}}
+{"functions":{"api/generate-marketing.ts":{"maxDuration":120},"api/generate-blurb.ts":{"maxDuration":120},"api/generate-metadata.ts":{"maxDuration":120},"api/research-promo.ts":{"maxDuration":90},"api/launch-advisor.ts":{"maxDuration":60},"api/paypal-create-order.ts":{"maxDuration":30},"api/paypal-capture.ts":{"maxDuration":30}}}

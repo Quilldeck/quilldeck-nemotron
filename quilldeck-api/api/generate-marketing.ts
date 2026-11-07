@@ -1,5 +1,6 @@
 import { generateJson } from '../lib/nebius';
 import { guard } from '../lib/guard';
+import { requireLaunchPass } from '../lib/entitlement';
 
 // The full launch package has five sections. A caller can ask for a subset
 // (the web demo sends two half-packages in parallel, which is faster and makes
@@ -57,6 +58,9 @@ function missingSections(data: MarketingPayload, expected: readonly Section[]): 
 export default async function handler(req: any, res: any) {
   const { prompt, website, expect } = req.body ?? {};
   if (!guard(req, res, ['STORY ACCURACY (most important)', 'You are an expert book marketing strategist for independent authors'], prompt)) return;
+  // Launch Pass check: on the PayPal preview only. Production stays free.
+  const titleLine = /^- Title: "(.*)"$/m.exec(String(prompt));
+  if (!requireLaunchPass(req, res, titleLine?.[1])) return;
 
   const requested: Section[] = Array.isArray(expect)
     ? SECTIONS.filter((key) => expect.includes(key))

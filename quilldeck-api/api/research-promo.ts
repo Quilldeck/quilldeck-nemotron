@@ -1,5 +1,6 @@
 import { generateJson } from '../lib/nebius';
 import { guard } from '../lib/guard';
+import { requireLaunchPass } from '../lib/entitlement';
 
 // Live promo-site research: Tavily searches the web for book promotion
 // services that suit this genre, then Nemotron picks the best five using ONLY
@@ -69,6 +70,8 @@ const hostOf = (url: string) => {
 
 export default async function handler(req: any, res: any) {
   if (!guard(req, res)) return;
+  // Launch Pass check: on the PayPal preview only. Production stays free.
+  if (!requireLaunchPass(req, res, req.body?.title)) return;
   if (!process.env.TAVILY_API_KEY) {
     return res.status(500).json({ error: 'Server is not configured: TAVILY_API_KEY is missing' });
   }
