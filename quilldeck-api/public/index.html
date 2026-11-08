@@ -582,14 +582,14 @@ Book details:
 - Author: ${b.author || 'not given (where a sign-off or author name is needed, write [Author name])'}${b.series ? `\n- Series: ${b.series} (pitch this book as the way into the series where it fits, e.g. "start the series", a series hashtag)` : ''}
 - Genre: ${b.genre}
 - Synopsis: ${b.synopsis}
-- Chosen blurb (use for tone and hook only; where it adds details not in the synopsis, ignore them): ${blurb}
+${b.blurbChosen ? `- Chosen blurb (the author picked this one from three): ${blurb}\n  Its hook sets the angle for this whole package: open the posts, emails and ads with the same hook and tone, and reuse its strongest phrases where they fit. Where the blurb adds a detail that is not in the synopsis or the facts, do not use that detail.` : `- Blurb: none chosen yet; work from the synopsis.`}
 - Launch date: ${b.launch ? `${b.launch} (write dates in the form "17 April 2027")` : 'Coming soon'}
 
 ${fidelity(b)}
 
 Use the ACTUAL book title, genre, and character/world details from the synopsis throughout ALL content. Make every piece of content specific to THIS book, not generic. Write plain text: no markdown, and no asterisks or underscores for emphasis. Write in British English (colour, favourite, realise, centre, grey). Do not use em dashes or en dashes; use commas, full stops or colons instead.
 
-Do NOT invent facts the author has not given you: no made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].
+Do NOT invent facts the author has not given you: never say how long it is until launch (no "in six weeks", "next month" or "this Friday"); name the launch date itself instead. Do not call the book a debut unless the author says so. No made-up events or dates other than the launch date (no AMAs, live Q&As, livestreams, panels or signings), no giveaways, contests, bonus content, wallpapers, maps or freebies, no prices, social media handles, websites or links. Where one would naturally go, write a clear placeholder in square brackets instead, e.g. [your website], [pre-order link], [date of your live Q&A].
 
 Never present any text as a quotation, opening line, first line, excerpt or dialogue from the book unless that exact text appears in the synopsis, the author's facts or the chosen blurb. For a quote post, write [a line from your book] for the author to fill in.`;
 
@@ -606,7 +606,7 @@ Generate BOTH of the following:
 
 2. EMAIL NEWSLETTERS (3 emails) with subject lines, each signed by the author:
    - Pre-launch tease
-   - Launch day announcement
+   - Launch day announcement${b.blurbChosen ? ' (include the chosen blurb word for word as the book description)' : ''}
    - Post-launch follow-up
 
 Respond in valid JSON only, with both arrays filled:
@@ -821,6 +821,7 @@ Respond in valid JSON only:
     setBusy(true);
     showWorking('building your launch plan', 'Posts, emails, ads and a 14-day calendar, while Tavily researches promo sites live on the web. It usually takes 15 to 45 seconds.');
     const blurb = chosenBlurb || book.synopsis;
+    book.blurbChosen = Boolean(chosenBlurb);
     const halves = await Promise.allSettled([
       call('/api/generate-marketing', planPromptA(book, blurb), ['socialPosts', 'emails']),
       call('/api/generate-marketing', planPromptB(book, blurb), ['adCopy']),

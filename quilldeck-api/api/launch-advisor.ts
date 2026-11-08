@@ -57,9 +57,9 @@ Book:
 
 Recommend "launch_pass" when the author is preparing a launch: a launch date is set, or the book is ready and needs readers. Recommend "free" when the book still looks early (for example no launch date and the author has not yet settled on a blurb), and say what to do first. Be honest: do not push a sale the author does not need yet.
 
-Rules: Base every reason on the details above, naming the book, its genre or its launch date. Do not invent facts about the book, its sales, its audience size or results. Do not promise outcomes. Write in British English. Do not use em dashes or en dashes.
+Rules: Speak directly to the author as "you" and "your book", in plain, warm, complete sentences (never note form or semicolon lists). Base every reason on the details above, naming the book, its genre or its launch date. Call the genre exactly "${genre}", never a paraphrase of it. Do not call the book a debut unless the details say so. Do not invent facts about the book, its sales, its audience size or results. Do not promise outcomes. Write in British English. Do not use em dashes or en dashes.
 
-Also write itemDescription: one line of at most 110 characters for the PayPal receipt, describing what this Launch Pass covers for this book (for example "14-day launch calendar, emails and ads for a Yoruba and Norse epic fantasy").
+Also write itemDescription: one line of at most 110 characters for the PayPal receipt, describing what this Launch Pass covers for this book and naming the genre exactly as "${genre}" (for example "14-day launch calendar, emails, ads and promo-site research for a ${genre} novel").
 
 Respond in valid JSON only:
 {"recommendation":"launch_pass","headline":"one sentence, at most 20 words","reasons":["reason one, at most 30 words","reason two, at most 30 words"],"itemDescription":"..."}`;
