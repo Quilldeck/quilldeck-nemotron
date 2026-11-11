@@ -11,7 +11,7 @@ This branch (`paypal`) is the entry for the **PayPal AI Hackathon**. The `main` 
 **Sandbox test buyer (PayPal sandbox only, no real money):**
 
 - Email: `sb-r8fbm53685950@personal.example.com`
-- Password: `[TEST BUYER PASSWORD]`
+- Password: `QdkLaunchPass2026`
 
 **Steps (about 3 minutes):**
 
